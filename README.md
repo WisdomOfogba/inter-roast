@@ -59,6 +59,12 @@ With a store configured, roasts are saved under readable ids and links look like
 
 Without a store, or if a write fails, RepoRiot falls back to a long self-contained signed link, so roasting never breaks. Existing long links keep working after you add the store.
 
+## Usage stats
+
+With the share-link store connected, each completed roast also updates a few counters: total roasts, roasts per day, unique profiles (HyperLogLog, about ±1%), Gemini versus rules-engine roasts, and the most-roasted profiles. That's one request (about 8 Redis commands) per roast. Failed lookups aren't counted, and nothing about the person who ran a roast is stored.
+
+To view them, set `STATS_KEY` (any random string of 12+ characters, e.g. `openssl rand -hex 16`), redeploy, and open `/api/stats?key=YOUR_KEY`. Without the right key the URL returns 404. Counting starts when this feature is deployed: earlier roasts aren't included.
+
 ## Local development
 
 Requires Node 20.9+.
@@ -98,6 +104,7 @@ GITHUB_API_BASE_URL=http://localhost:4010 npm run dev
 | `NEXT_PUBLIC_SITE_URL` | No | Canonical URL printed on share images. Defaults to Vercel's production URL. |
 | `ROAST_RATE_LIMIT_PER_MINUTE` | No | Per-IP roasts per minute per instance (default 4) |
 | `KV_REST_API_URL` + `KV_REST_API_TOKEN` | Recommended | Upstash Redis for short share links (see above). Also accepts `UPSTASH_REDIS_REST_URL` / `_TOKEN`. In development an in-memory store is used automatically. |
+| `STATS_KEY` | No | Enables the private `/api/stats?key=…` usage page (12+ characters) |
 | `GITHUB_CACHE_SECONDS` | No | How long GitHub responses stay fresh (default 900; `0` disables caching) |
 | `GITHUB_API_BASE_URL` | No | For tests and offline dev. Defaults to `https://api.github.com`. |
 

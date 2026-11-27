@@ -11,6 +11,7 @@ import { createRoast } from "@/lib/roast";
 import { buildRecord } from "@/lib/roast/record";
 import { encodeRecord, getSigningSecret, newCaseId } from "@/lib/share/token";
 import { saveRecord } from "@/lib/share/store";
+import { recordRoast } from "@/lib/stats";
 import { clientKey, RateLimiter } from "@/lib/rate-limit";
 
 /**
@@ -110,7 +111,7 @@ export async function POST(request: Request) {
               : "Roast written by the rules engine",
         });
         // Short link when a store is configured; otherwise the long self-contained signed link.
-        const id = await saveRecord(record);
+        const [id] = await Promise.all([saveRecord(record), recordRoast({ login: fp.profile.login, source: outcome.source, intensity: body.intensity })]);
         const path = `/r/${id ?? encodeRecord(record, secret)}`;
         send({ type: "result", path, source: outcome.source, fallbackReason: outcome.fallbackReason ?? null });
       } catch (err) {
