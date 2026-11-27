@@ -57,8 +57,14 @@ export default function Home() {
             <figure className="mt-14 sm:mt-16">
               <BurningGraph className="w-full" />
               <figcaption className="mt-3 flex justify-between gap-4 text-[13px] text-faint">
-                <span>Your contribution graph</span>
-                <span>Your contribution graph after review</span>
+                <span>
+                  <span className="sm:hidden">Before</span>
+                  <span className="hidden sm:inline">Your contribution graph</span>
+                </span>
+                <span>
+                  <span className="sm:hidden">After review</span>
+                  <span className="hidden sm:inline">Your contribution graph after review</span>
+                </span>
               </figcaption>
             </figure>
           </div>
