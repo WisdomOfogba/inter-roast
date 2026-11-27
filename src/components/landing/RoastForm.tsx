@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { Check, CircleAlert, LoaderCircle, Minus, RotateCcw } from "lucide-react";
+import { Check, CircleAlert, Feather, Flame, LoaderCircle, Minus, RotateCcw } from "lucide-react";
 import { GitHubIcon } from "@/components/brand/GitHubIcon";
 import { parseGitHubProfile } from "@/lib/github/url";
 import { INTENSITIES, type Intensity } from "@/types/roast";
@@ -202,7 +202,7 @@ export function RoastForm({ autoFocus = false, variant = "hero", profile: fixedP
             disabled={busy}
             className="inline-flex h-12 shrink-0 items-center justify-center gap-2 rounded-md bg-commit px-5 text-base font-semibold text-commit-ink transition-colors hover:bg-commit-hover disabled:cursor-wait disabled:opacity-70"
           >
-            {busy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
+            {busy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <Flame className="size-4" aria-hidden />}
             {busy ? "Roasting…" : "Roast this profile"}
           </button>
         </div>
@@ -230,7 +230,17 @@ export function RoastForm({ autoFocus = false, variant = "hero", profile: fixedP
                 }`}
               >
                 <input type="radio" name="heat" value={h} checked={heat === h} onChange={() => setHeat(h)} className="sr-only" />
-                <span className="text-[15px] font-semibold">{HEAT[h].label}</span>
+                <span className="inline-flex items-center justify-center gap-1.5 text-[15px] font-semibold sm:justify-start">
+                  {h === "mild" ? (
+                    <Feather className="size-4" aria-hidden />
+                  ) : (
+                    <span className="inline-flex" aria-hidden>
+                      <Flame className="size-4" />
+                      {h === "scorched" && <Flame className="-ml-1.5 size-4" />}
+                    </span>
+                  )}
+                  {HEAT[h].label}
+                </span>
                 <span className={`hidden text-[13px] sm:block ${heat === h && h === "scorched" ? "text-[#3a1206]" : "text-faint"}`}>{HEAT[h].hint}</span>
               </label>
             ))}

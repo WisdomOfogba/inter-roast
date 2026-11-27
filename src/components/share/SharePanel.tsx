@@ -7,6 +7,7 @@ import { Check, Copy, Download, Link2, LoaderCircle, RotateCcw, Share2 } from "l
 import type { RoastRecord } from "@/types/roast";
 import { CATEGORY_LABEL } from "@/types/roast";
 import { ShareCard, CARD_SIZES, type CardFormat } from "./ShareCard";
+import { LinkedInIcon, XIcon } from "@/components/brand/BrandIcons";
 import { ScaledCard } from "./ScaledCard";
 import { getEmbeddedFontCSS } from "@/lib/social-sharing/font-embed";
 import { linkedInShareUrl, shareText, xShareUrl } from "@/lib/social-sharing/links";
@@ -156,9 +157,11 @@ export function SharePanel({ record, shareUrl, host }: { record: RoastRecord; sh
             <span className="hidden sm:inline">Copy roast text</span>
           </button>
           <a href={xShareUrl(text, shareUrl)} target="_blank" rel="noopener noreferrer" className={btn}>
+            <XIcon />
             Post on X
           </a>
           <a href={linkedInShareUrl(shareUrl)} target="_blank" rel="noopener noreferrer" className={btn}>
+            <LinkedInIcon />
             <span className="sm:hidden">LinkedIn</span>
             <span className="hidden sm:inline">Share on LinkedIn</span>
           </a>

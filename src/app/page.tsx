@@ -5,22 +5,26 @@ import { BurningGraph } from "@/components/landing/BurningGraph";
 import { ReviewView } from "@/components/review/ReviewView";
 import { ExampleShareCard } from "@/components/landing/ExampleShareCard";
 import { ReadTree } from "@/components/landing/ReadTree";
+import { Link2, MessageSquareWarning, ScanSearch } from "lucide-react";
 import { EXAMPLE_NOW, EXAMPLE_RECORD } from "@/lib/example";
 import { siteHost } from "@/lib/social-sharing/links";
 import { siteUrl } from "@/lib/site";
 
 const STEPS = [
   {
+    icon: Link2,
     title: "Drop your GitHub profile",
     body: "Paste a link like github.com/your-username. No login, no OAuth, nothing to install.",
     code: "github.com/your-username",
   },
   {
+    icon: ScanSearch,
     title: "We inspect your public footprint",
     body: "Your profile, up to 100 recently pushed repos, up to 5 READMEs, your public events and a sample of recent commit messages, all from the official GitHub API.",
     code: "GET /users/{user}/repos?sort=pushed",
   },
   {
+    icon: MessageSquareWarning,
     title: "Get your code review",
     body: "Gemini writes the roast as review comments. Every repo, commit and number it cites is checked against what GitHub returned before you see it.",
     code: "Changes requested",
@@ -87,7 +91,10 @@ export default function Home() {
             <ol className="mt-10 grid gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-3">
               {STEPS.map((s, i) => (
                 <li key={s.title} className="flex flex-col bg-canvas p-6 sm:p-7">
-                  <span className="font-mono text-[14px] text-commit">Step {i + 1}</span>
+                  <span className="flex items-center justify-between">
+                    <span className="font-mono text-[14px] text-commit">Step {i + 1}</span>
+                    <s.icon className="size-5 text-muted" aria-hidden />
+                  </span>
                   <h3 className="mt-3 text-xl font-semibold tracking-[-0.02em]">{s.title}</h3>
                   <p className="mt-2 flex-1 text-[16px] leading-relaxed text-muted">{s.body}</p>
                   <code className="mt-6 block overflow-x-auto whitespace-nowrap rounded-md border border-line bg-panel px-3 py-2 font-mono text-[13px] text-fg/80">
