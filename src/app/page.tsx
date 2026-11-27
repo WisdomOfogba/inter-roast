@@ -94,16 +94,16 @@ export default function Home() {
         <section id="how" aria-labelledby="how-title" className="scroll-mt-14 border-b border-line">
           <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
             <h2 id="how-title" className="display text-[clamp(2rem,5vw,3rem)]">How it works</h2>
-            <ol className="mt-10 grid gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-3">
+            <ol className="mt-10 grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-3">
               {STEPS.map((s, i) => (
-                <li key={s.title} className="flex flex-col bg-canvas p-6 sm:p-7">
+                <li key={s.title} className="flex min-w-0 flex-col bg-canvas p-6 sm:p-7">
                   <span className="flex items-center justify-between">
                     <span className="font-mono text-[14px] text-commit">Step {i + 1}</span>
                     <s.icon className="size-5 text-muted" aria-hidden />
                   </span>
                   <h3 className="mt-3 text-xl font-semibold tracking-[-0.02em]">{s.title}</h3>
                   <p className="mt-2 flex-1 text-[16px] leading-relaxed text-muted">{s.body}</p>
-                  <code className="mt-6 block overflow-x-auto whitespace-nowrap rounded-md border border-line bg-panel px-3 py-2 font-mono text-[13px] text-fg/80">
+                  <code className="mt-6 block rounded-md [overflow-wrap:anywhere] border border-line bg-panel px-3 py-2 font-mono text-[13px] text-fg/80">
                     {s.code}
                   </code>
                 </li>
