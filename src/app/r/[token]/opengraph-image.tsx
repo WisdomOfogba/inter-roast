@@ -1,5 +1,5 @@
 import { ImageResponse } from "next/og";
-import { decodeRecord, getSigningSecret } from "@/lib/share/token";
+import { resolveRecord } from "@/lib/share/resolve";
 import { OG_SIZE, OgFrame, ogFonts } from "@/lib/og";
 
 export const alt = "A RepoRiot roast of a GitHub profile";
@@ -8,7 +8,7 @@ export const contentType = "image/png";
 
 export default async function Image({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const record = decodeRecord(token, getSigningSecret());
+  const record = await resolveRecord(token);
   const fonts = await ogFonts();
   if (!record) return new ImageResponse(<OgFrame kicker="reporiot" title="This roast link doesn't check out." subtitle="Roast a profile at RepoRiot." />, { ...size, fonts });
   return new ImageResponse(

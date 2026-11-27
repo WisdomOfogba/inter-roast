@@ -4,6 +4,8 @@ import { LogoMark } from "@/components/brand/Logo";
 import { ProfileHeader } from "./ProfileHeader";
 import { Evidence } from "./Evidence";
 import { LanguageBar } from "./LanguageBar";
+import { CategoryIcon } from "./CategoryIcon";
+import { Code2, Hash, Info } from "lucide-react";
 
 const SOURCE_NOTE: Record<string, string> = {
   unconfigured: "Written by RepoRiot's rules engine from the facts below (AI writing isn't enabled on this deployment).",
@@ -50,7 +52,7 @@ export function ReviewView({ record, compact = false, avatarSrc, now, linkable =
 
   return (
     <div className={compact ? "" : "grid gap-12 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-14"}>
-      <article aria-labelledby={`headline-${record.caseId}`} className="min-w-0">
+      <article id={compact ? undefined : "roast-content"} aria-labelledby={`headline-${record.caseId}`} className="min-w-0 scroll-mt-16">
         <ProfileHeader profile={record.profile} avatarSrc={avatarSrc} linkable={linkable} dataAsOf={compact ? undefined : record.dataAsOf} />
 
         <div className="mt-10">
@@ -85,7 +87,10 @@ export function ReviewView({ record, compact = false, avatarSrc, now, linkable =
                   <span className="font-semibold">RepoRiot</span>
                   <span className="text-muted">left a comment</span>
                 </span>
-                <span className="text-muted">{CATEGORY_LABEL[c.category]}</span>
+                <span className="inline-flex items-center gap-1.5 text-muted">
+                  <CategoryIcon category={c.category} className="size-4 text-ember" />
+                  {CATEGORY_LABEL[c.category]}
+                </span>
               </div>
               <div className="bg-canvas px-4 py-4 sm:px-5">
                 <h3 className="text-lg font-semibold leading-snug tracking-[-0.015em]">{c.title}</h3>
@@ -113,13 +118,13 @@ export function ReviewView({ record, compact = false, avatarSrc, now, linkable =
       {!compact && (
         <aside aria-label="What we looked at" className="space-y-6">
           <div className="rounded-lg border border-line bg-panel p-5">
-            <h2 className="font-semibold">Languages</h2>
+            <h2 className="flex items-center gap-2 font-semibold"><Code2 className="size-4 text-muted" aria-hidden />Languages</h2>
             <div className="mt-4">
               <LanguageBar languages={record.languages} />
             </div>
           </div>
           <div className="rounded-lg border border-line bg-panel p-5">
-            <h2 className="font-semibold">The numbers</h2>
+            <h2 className="flex items-center gap-2 font-semibold"><Hash className="size-4 text-muted" aria-hidden />The numbers</h2>
             <p className="mt-1 text-[13px] text-faint">Counted from public data. Not a score, and not a measure of skill.</p>
             <FactList facts={record.facts.slice(0, 8)} />
             {record.facts.length > 8 && (
@@ -133,7 +138,7 @@ export function ReviewView({ record, compact = false, avatarSrc, now, linkable =
             )}
           </div>
           <div className="rounded-lg border border-line p-5 text-[14px] leading-relaxed text-muted">
-            <h2 className="font-semibold text-fg">About this roast</h2>
+            <h2 className="flex items-center gap-2 font-semibold text-fg"><Info className="size-4 text-muted" aria-hidden />About this roast</h2>
             <p className="mt-2">{sourceNote(record)}</p>
             <p className="mt-2">
               Only public data is visible to us: private repositories and private contributions aren&apos;t included.

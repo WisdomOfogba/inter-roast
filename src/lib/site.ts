@@ -9,4 +9,5 @@ export function siteUrl(): string {
 
 export const SITE_NAME = "RepoRiot";
 export const TAGLINE = "Your code has receipts.";
-export const SOURCE_URL = "https://github.com/WisdomOfogba/inter-roast";
+export const SOURCE_REPO = "WisdomOfogba/repo-riote";
+export const SOURCE_URL = `https://github.com/${SOURCE_REPO}`;

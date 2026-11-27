@@ -48,6 +48,16 @@ No database is needed. Next.js caches give persistence shared across serverless 
 - **Updated profiles:** the result page shows *"GitHub data as of …"* from GitHub's own `Date` header, which cached responses keep, so the age is real. **"Fetch latest data and re-roast"** sends `refresh: true`, which runs `revalidateTag("github:{login}", { expire: 0 })` and refetches. It's limited to once per profile per minute so it can't drain the quota. Old share links stay snapshots of the roast they were made from.
 - **Deploys:** fetch-cache and `unstable_cache` entries persist across deploys on Vercel (per the Next 16 docs). Bump the `roast:v1` / `readme:v1` key prefix if their format changes.
 
+## Short share links
+
+With a store configured, roasts are saved under readable ids and links look like `https://your-site/r/octocat-k7q2xm`. Stored roasts never change, so page views go through a persistent cache and cost about one Redis read per link, not one per view. Entries expire after a year.
+
+1. In Vercel, open **Storage** (or the **Marketplace**), add **Upstash for Redis**, and connect it to the project. The free tier is 256 MB and 500K commands a month, with no card required.
+2. The integration adds `KV_REST_API_URL` and `KV_REST_API_TOKEN`. `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` also work if you create the database on upstash.com.
+3. Redeploy.
+
+Without a store, or if a write fails, RepoRiot falls back to a long self-contained signed link, so roasting never breaks. Existing long links keep working after you add the store.
+
 ## Local development
 
 Requires Node 20.9+.
@@ -86,6 +96,7 @@ GITHUB_API_BASE_URL=http://localhost:4010 npm run dev
 | `GEMINI_THINKING_LEVEL` | No | `minimal` / `low` (default) / `medium` / `high` / `off` |
 | `NEXT_PUBLIC_SITE_URL` | No | Canonical URL printed on share images. Defaults to Vercel's production URL. |
 | `ROAST_RATE_LIMIT_PER_MINUTE` | No | Per-IP roasts per minute per instance (default 4) |
+| `KV_REST_API_URL` + `KV_REST_API_TOKEN` | Recommended | Upstash Redis for short share links (see above). Also accepts `UPSTASH_REDIS_REST_URL` / `_TOKEN`. In development an in-memory store is used automatically. |
 | `GITHUB_CACHE_SECONDS` | No | How long GitHub responses stay fresh (default 900; `0` disables caching) |
 | `GITHUB_API_BASE_URL` | No | For tests and offline dev. Defaults to `https://api.github.com`. |
 

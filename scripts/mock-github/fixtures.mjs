@@ -100,6 +100,8 @@ export function route(path, accept = "") {
   if (parts[0] === "users" && parts[1] === "rate-limited") {
     return { status: 403, body: { message: "API rate limit exceeded" }, headers: { "x-ratelimit-remaining": "0", "x-ratelimit-reset": String(Math.floor(Date.now() / 1000) + 1800) } };
   }
+  // The app's own repo (nav star button). Placeholder count for local screenshots only.
+  if (url.pathname.toLowerCase() === "/repos/wisdomofogba/repo-riote") return { status: 200, body: { full_name: "WisdomOfogba/repo-riote", stargazers_count: 128 } };
   if (parts[0] === "users" && parts[1] === "broken-api") return { status: 502, body: { message: "Bad gateway" } };
 
   if (parts[0] === "users") {
