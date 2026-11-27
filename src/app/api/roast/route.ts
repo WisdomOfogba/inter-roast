@@ -3,8 +3,10 @@ import { z } from "zod";
 import { INTENSITIES } from "@/types/roast";
 import type { StageEvent } from "@/types/github";
 import { parseGitHubProfile } from "@/lib/github/url";
-import { readGitHubConfig, GitHubError } from "@/lib/github/client";
-import { cachedFootprint, collectFootprint, storeFootprint } from "@/lib/github/collect";
+import { readGitHubConfig, GitHubError, githubTag } from "@/lib/github/client";
+import { revalidateTag, unstable_cache } from "next/cache";
+import { collectFootprint } from "@/lib/github/collect";
+import { getRoastCached } from "@/lib/roast/cache";
 import { createRoast } from "@/lib/roast";
 import { buildRecord } from "@/lib/roast/record";
 import { encodeRecord, getSigningSecret, newCaseId } from "@/lib/share/token";
@@ -21,7 +23,13 @@ import { clientKey, RateLimiter } from "@/lib/rate-limit";
 const bodySchema = z.object({
   profile: z.string().max(200),
   intensity: z.enum(INTENSITIES).default("spicy"),
+  /** Bypass cached GitHub data and cached roasts for this profile. */
+  refresh: z.boolean().optional().default(false),
 });
+
+/** One forced refresh per profile per minute (per instance), so refresh can't be used to drain the GitHub quota. */
+const lastRefresh = new Map<string, number>();
+const REFRESH_COOLDOWN_MS = 60_000;
 
 const perMinute = Number(process.env.ROAST_RATE_LIMIT_PER_MINUTE) || 4;
 const limiter = new RateLimiter([
@@ -58,28 +66,48 @@ export async function POST(request: Request) {
   const rl = limiter.check(clientKey(request.headers));
   if (!rl.ok) return jsonError(429, "too_many", `Slow down. You can roast again in ${rl.retryAfterSec}s.`, { "Retry-After": String(rl.retryAfterSec) });
 
+  let refreshed = false;
+  if (body.refresh) {
+    const key = profile.username.toLowerCase();
+    const last = lastRefresh.get(key) ?? 0;
+    if (Date.now() - last >= REFRESH_COOLDOWN_MS) {
+      lastRefresh.set(key, Date.now());
+      if (lastRefresh.size > 2000) lastRefresh.delete(lastRefresh.keys().next().value!);
+      // expire: 0 => the next read is a blocking refetch from GitHub, not stale data.
+      revalidateTag(githubTag(profile.username), { expire: 0 });
+      refreshed = true;
+    }
+  }
+
   const encoder = new TextEncoder();
   const stream = new ReadableStream({
     async start(controller) {
       const send = (obj: unknown) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
       try {
         const emit = (e: StageEvent) => send(e);
-        let fp = cachedFootprint(profile.username);
-        if (fp) {
-          const cached = fp;
-          // Data is reused from a fetch in the last 15 minutes; say so honestly.
-          (["profile", "repos", "readmes", "activity"] as const).forEach((stage) =>
-            emit({ type: "stage", stage, status: "done", detail: stage === "profile" ? `Using @${cached.profile.login}'s data fetched in the last 15 minutes` : undefined }),
-          );
-        } else {
-          fp = await collectFootprint(profile.username, readGitHubConfig(), emit);
-          storeFootprint(fp);
+        if (body.refresh && !refreshed) {
+          send({ type: "note", message: "This profile was refreshed under a minute ago, so we're using that data." });
         }
+        const ghConfig = readGitHubConfig();
+        if (ghConfig.cacheSeconds) {
+          ghConfig.memo = (key, tags, fn) => unstable_cache(fn, key, { revalidate: ghConfig.cacheSeconds * 4, tags })();
+        }
+        const fp = await collectFootprint(profile.username, ghConfig, emit);
 
         emit({ type: "stage", stage: "roast", status: "start" });
-        const outcome = await createRoast(fp, body.intensity);
+        const { outcome, reused } = await getRoastCached(fp, body.intensity, () => createRoast(fp, body.intensity));
         const record = buildRecord(fp, outcome, body.intensity, newCaseId());
-        emit({ type: "stage", stage: "roast", status: "done", detail: outcome.source === "gemini" ? "Roast written by Gemini" : "Roast written by the rules engine" });
+        const mins = Math.max(1, Math.round((Date.now() - outcome.generatedAt) / 60_000));
+        emit({
+          type: "stage",
+          stage: "roast",
+          status: "done",
+          detail: reused
+            ? `Reusing the Gemini roast written ${mins} min ago for this exact data`
+            : outcome.source === "gemini"
+              ? "Roast written by Gemini"
+              : "Roast written by the rules engine",
+        });
         send({ type: "result", token: encodeRecord(record, secret), source: outcome.source, fallbackReason: outcome.fallbackReason ?? null });
       } catch (err) {
         if (err instanceof GitHubError) {

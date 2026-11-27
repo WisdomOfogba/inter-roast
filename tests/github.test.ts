@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { parseGitHubProfile } from "@/lib/github/url";
-import { collectFootprint, _clearFootprintCache, LIMITS } from "@/lib/github/collect";
+import { collectFootprint, LIMITS } from "@/lib/github/collect";
 import { GitHubError, readGitHubConfig } from "@/lib/github/client";
 import { analyzeReadme } from "@/lib/github/readme";
 import { fixtureFetch } from "../scripts/mock-github/fixtures.mjs";
@@ -8,7 +8,6 @@ import { fixtureFetch } from "../scripts/mock-github/fixtures.mjs";
 const cfg = (calls: string[] = [], token = false) =>
   readGitHubConfig({ GITHUB_API_BASE_URL: "http://mock", ...(token ? { GITHUB_TOKEN: "t" } : {}) } as unknown as NodeJS.ProcessEnv, fixtureFetch(calls));
 
-beforeEach(() => _clearFootprintCache());
 
 describe("parseGitHubProfile", () => {
   it.each([
@@ -96,6 +95,41 @@ describe("collectFootprint", () => {
     }) as unknown as typeof fetch;
     await collectFootprint("x", readGitHubConfig({ GITHUB_TOKEN: "secret" } as unknown as NodeJS.ProcessEnv, f)).catch(() => {});
     expect(auth).toBe("Bearer secret");
+  });
+});
+
+describe("caching", () => {
+  it("asks Next's fetch cache to store responses, tagged per user", async () => {
+    const inits: RequestInit[] = [];
+    const f = (async (_u: string, init: RequestInit) => {
+      inits.push(init);
+      return new Response(JSON.stringify({ message: "Not Found" }), { status: 404 });
+    }) as unknown as typeof fetch;
+    await collectFootprint("Lena-Bytes", readGitHubConfig({} as NodeJS.ProcessEnv, f)).catch(() => {});
+    expect(inits[0]).toMatchObject({ cache: "force-cache", next: { revalidate: 900, tags: ["github", "github:lena-bytes"] } });
+  });
+  it("can be disabled with GITHUB_CACHE_SECONDS=0", async () => {
+    const inits: RequestInit[] = [];
+    const f = (async (_u: string, init: RequestInit) => {
+      inits.push(init);
+      return new Response("{}", { status: 404 });
+    }) as unknown as typeof fetch;
+    await collectFootprint("x", readGitHubConfig({ GITHUB_CACHE_SECONDS: "0" } as unknown as NodeJS.ProcessEnv, f)).catch(() => {});
+    expect(inits[0].cache).toBe("no-store");
+  });
+  it("dates the data from GitHub's Date header, so cached data reports its real age", async () => {
+    const served = new Date(Date.now() - 7 * 60_000).toUTCString();
+    const base = fixtureFetch();
+    const f = (async (u: string, init: RequestInit) => {
+      const res = await base(u, init);
+      const h = new Headers(res.headers);
+      h.set("date", served);
+      return new Response(await res.text(), { status: res.status, headers: h });
+    }) as unknown as typeof fetch;
+    const stages: string[] = [];
+    const fp = await collectFootprint("lena-bytes", readGitHubConfig({} as NodeJS.ProcessEnv, f), (e) => e.detail && stages.push(e.detail));
+    expect(Date.parse(fp.dataAsOf)).toBe(Date.parse(served));
+    expect(stages[0]).toMatch(/cached 7 min ago/);
   });
 });
 

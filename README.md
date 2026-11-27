@@ -27,11 +27,26 @@ paste URL ──► POST /api/roast (NDJSON stream)
 
 The loading log in the UI is driven by those real stage events: a stage appears only when the server actually starts it.
 
-- **Budget:** at most 11 GitHub requests per roast. Footprints are cached in memory for 15 minutes per instance.
+- **Budget:** at most 11 GitHub requests for a first roast, 0 for a repeat (see Caching).
 - **Facts, not vibes:** `src/lib/github/normalize.ts` computes every number the roast may cite (stale repos, missing READMEs, starter-template READMEs, low-effort commit messages and so on). Each fact has an id and a plain-language definition. The model cites fact ids; the UI shows our values, never the model's.
 - **Grounding:** each review comment must cite evidence (`repo`, `readme`, `fact` or `commit`). Evidence that doesn't match retrieved data is dropped, then comments without evidence are dropped. Fewer than 2 grounded comments means the output is rejected.
 - **Honest fallbacks:** if GitHub fails (404, organization, rate limit, network, 5xx), the user gets a specific error and a retry, never a fake roast. If Gemini fails (quota, outage, malformed or blocked output), the rules engine writes a roast from the same facts, and the result page says so and why.
 - **What we don't claim:** private repos and contributions are invisible to us, and the prompt forbids guessing about them. It also forbids judging intelligence, employability or character, and treating stars or commit counts as quality.
+
+## Caching and fresh data
+
+No database is needed. Next.js caches give persistence shared across serverless instances (on Vercel, the Data Cache):
+
+| What | How | Lifetime | Invalidated by |
+| --- | --- | --- | --- |
+| GitHub responses (profile, repos, events, commits, READMEs, GraphQL) | `fetch` with `cache: "force-cache"`, tags `github` and `github:{login}` | 15 min (`GITHUB_CACHE_SECONDS`), then stale-while-revalidate | Refresh, or time |
+| Missing-README lookups (404s, which the fetch cache never stores) | `unstable_cache`, keyed by repo + `pushed_at` | 1 hour, or as soon as the repo is pushed | A push, refresh or time |
+| Gemini roasts | `unstable_cache`, keyed by login + heat + data version | 6 hours | New GitHub data, refresh or time |
+
+- **Never cached:** errors (404 user, rate limits, 5xx) and rules-engine fallbacks. A quota fallback never gets stuck, and a new account works immediately.
+- **Repeat roasts:** a repeat roast of the same profile makes **0 GitHub requests**. Usernames are lowercased, so `Octocat` and `octocat` share a cache entry. With the same heat and unchanged data, Gemini isn't called again either, and the loading log says it reused the earlier roast.
+- **Updated profiles:** the result page shows *"GitHub data as of …"* from GitHub's own `Date` header, which cached responses keep, so the age is real. **"Fetch latest data and re-roast"** sends `refresh: true`, which runs `revalidateTag("github:{login}", { expire: 0 })` and refetches. It's limited to once per profile per minute so it can't drain the quota. Old share links stay snapshots of the roast they were made from.
+- **Deploys:** fetch-cache and `unstable_cache` entries persist across deploys on Vercel (per the Next 16 docs). Bump the `roast:v1` / `readme:v1` key prefix if their format changes.
 
 ## Local development
 
@@ -50,7 +65,7 @@ npm run mock:github                                  # http://localhost:4010
 GITHUB_API_BASE_URL=http://localhost:4010 npm run dev
 ```
 
-Fictional users: `lena-bytes` (rich profile), `empty-octo` (no repos), `acme-org` (organization), `rate-limited` (403 with `x-ratelimit-remaining: 0`), `broken-api` (502). Anything else returns 404.
+`GET http://localhost:4010/__stats` returns how many API requests the mock served, which is handy for checking caching. Fictional users: `lena-bytes` (rich profile), `empty-octo` (no repos), `acme-org` (organization), `rate-limited` (403 with `x-ratelimit-remaining: 0`), `broken-api` (502). Anything else returns 404.
 
 | Script | |
 | --- | --- |
@@ -71,6 +86,7 @@ Fictional users: `lena-bytes` (rich profile), `empty-octo` (no repos), `acme-org
 | `GEMINI_THINKING_LEVEL` | No | `minimal` / `low` (default) / `medium` / `high` / `off` |
 | `NEXT_PUBLIC_SITE_URL` | No | Canonical URL printed on share images. Defaults to Vercel's production URL. |
 | `ROAST_RATE_LIMIT_PER_MINUTE` | No | Per-IP roasts per minute per instance (default 4) |
+| `GITHUB_CACHE_SECONDS` | No | How long GitHub responses stay fresh (default 900; `0` disables caching) |
 | `GITHUB_API_BASE_URL` | No | For tests and offline dev. Defaults to `https://api.github.com`. |
 
 ## Deploy to Vercel
@@ -85,7 +101,7 @@ Fictional users: `lena-bytes` (rich profile), `empty-octo` (no repos), `acme-org
 - Repos are sampled: the 100 most recently pushed. A profile's most-starred repo older than that window can be missed.
 - Pinned repos and contribution totals need a token (GraphQL). Without one, that category is skipped rather than guessed.
 - GitHub's Events API returns at most 300 events from the last 90 days, and PushEvent payloads no longer include commit lists, so commit messages come from the commits endpoint for the two most recently pushed repos.
-- Rate limiting and caches are in memory, per serverless instance.
+- The per-IP rate limiter and the refresh throttle are in memory, per serverless instance. The data caches are shared.
 - Gemini free-tier quotas aren't published per model and are small. When exhausted, roasts fall back to the rules engine (labelled).
 - Edited or forged share links show the "doesn't check out" page with HTTP 200 (the page streams under Partial Prerendering) and are `noindex`.
 

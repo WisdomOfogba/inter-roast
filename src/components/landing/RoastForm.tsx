@@ -34,10 +34,19 @@ function failureText(f: Failure): string {
   return f.message;
 }
 
-export function RoastForm({ autoFocus = false }: { autoFocus?: boolean }) {
+interface RoastFormProps {
+  autoFocus?: boolean;
+  /** "refresh": fixed profile, bypasses cached GitHub data and cached roasts. */
+  variant?: "hero" | "refresh";
+  profile?: string;
+}
+
+export function RoastForm({ autoFocus = false, variant = "hero", profile: fixedProfile }: RoastFormProps) {
+  const isRefresh = variant === "refresh";
   const router = useRouter();
   const id = useId();
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(fixedProfile ?? "");
+  const [notes, setNotes] = useState<string[]>([]);
   const [heat, setHeat] = useState<Intensity>("spicy");
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -64,6 +73,7 @@ export function RoastForm({ autoFocus = false }: { autoFocus?: boolean }) {
   const run = async (profile: string) => {
     setPhase("running");
     setStages([]);
+    setNotes([]);
     setFailure(null);
     const ctrl = new AbortController();
     abortRef.current = ctrl;
@@ -71,7 +81,7 @@ export function RoastForm({ autoFocus = false }: { autoFocus?: boolean }) {
       const res = await fetch("/api/roast", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ profile, intensity: heat }),
+        body: JSON.stringify({ profile, intensity: heat, refresh: isRefresh }),
         signal: ctrl.signal,
       });
       if (!res.ok || !res.body) {
@@ -98,6 +108,8 @@ export function RoastForm({ autoFocus = false }: { autoFocus?: boolean }) {
               const next = prev.filter((s) => s.stage !== msg.stage);
               return [...next, { stage: msg.stage, status: msg.status, detail: msg.detail }];
             });
+          } else if (msg.type === "note") {
+            setNotes((n) => [...n, msg.message]);
           } else if (msg.type === "result") {
             setPhase("done");
             router.push(`/r/${msg.token}`);
@@ -136,6 +148,8 @@ export function RoastForm({ autoFocus = false }: { autoFocus?: boolean }) {
   return (
     <div className="w-full">
       <form onSubmit={submit} noValidate aria-busy={busy}>
+        {!isRefresh && (
+        <>
         <label htmlFor={`${id}-url`} className="mb-2 block text-[15px] font-medium text-fg">
           GitHub profile
         </label>
@@ -186,8 +200,10 @@ export function RoastForm({ autoFocus = false }: { autoFocus?: boolean }) {
             Public data only. No GitHub login, nothing stored.
           </p>
         )}
+        </>
+        )}
 
-        <fieldset className="mt-5" disabled={busy}>
+        <fieldset className={isRefresh ? "" : "mt-5"} disabled={busy}>
           <legend className="mb-2 text-[15px] font-medium text-fg">Heat</legend>
           <div className="grid grid-cols-3 gap-1 rounded-lg border border-line bg-panel p-1" role="radiogroup">
             {INTENSITIES.map((h) => (
@@ -204,6 +220,16 @@ export function RoastForm({ autoFocus = false }: { autoFocus?: boolean }) {
             ))}
           </div>
         </fieldset>
+        {isRefresh && (
+          <button
+            type="submit"
+            disabled={busy}
+            className="mt-4 inline-flex min-h-12 items-center justify-center gap-2 rounded-md bg-commit px-5 text-base font-semibold text-commit-ink transition-colors hover:bg-commit-hover disabled:cursor-wait disabled:opacity-70"
+          >
+            {busy ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <RotateCcw className="size-4" aria-hidden />}
+            {busy ? "Fetching latest data…" : "Fetch latest data and re-roast"}
+          </button>
+        )}
       </form>
 
       {phase !== "idle" && (
@@ -229,6 +255,9 @@ export function RoastForm({ autoFocus = false }: { autoFocus?: boolean }) {
                   {s.detail && <span className="block break-words text-faint">{s.detail}</span>}
                 </span>
               </li>
+            ))}
+            {notes.map((n) => (
+              <li key={n} className="text-amber">{n}</li>
             ))}
             {phase === "running" && stages.length === 0 && (
               <li className="text-muted">

@@ -1,5 +1,5 @@
 import type { CommitSample, Footprint, ReadmeInsight, RepoSummary, StageEvent } from "@/types/github";
-import { ghGet, ghGraphQL, GitHubError, type GitHubConfig } from "./client";
+import { ghGet, ghGraphQL, GitHubError, githubTag, type GitHubConfig } from "./client";
 import { commitsSchema, eventsSchema, graphqlSchema, reposSchema, userSchema } from "./schemas";
 import { computeFacts, languageShares, summarizeActivity, toProfile, toRepo } from "./normalize";
 import { analyzeReadme } from "./readme";
@@ -36,11 +36,12 @@ const PINNED_QUERY = `query($login: String!) {
 }`;
 
 export async function collectFootprint(username: string, cfg: GitHubConfig, emit: Emit = () => {}, now = Date.now()): Promise<Footprint> {
-  const u = encodeURIComponent(username);
+  const u = encodeURIComponent(username.toLowerCase()); // GitHub logins are case-insensitive; one cache key per user
+  const tag = githubTag(username);
 
   // 1. Profile
   emit({ type: "stage", stage: "profile", status: "start" });
-  const userRes = await ghGet(cfg, `/users/${u}`);
+  const userRes = await ghGet(cfg, `/users/${u}`, { tag });
   if (userRes.status === 404) throw new GitHubError("not_found", `There's no GitHub user called @${username}.`);
   if (!userRes.data) throw new GitHubError("unavailable", `GitHub didn't return a profile for @${username} (${userRes.status}).`);
   const userParsed = userSchema.safeParse(userRes.data);
@@ -49,13 +50,18 @@ export async function collectFootprint(username: string, cfg: GitHubConfig, emit
     throw new GitHubError("organization", `@${userParsed.data.login} is an organization. RepoRiot roasts people, so paste a personal profile.`);
   }
   const profile = toProfile(userParsed.data);
-  emit({ type: "stage", stage: "profile", status: "done", detail: `Found @${profile.login}${profile.name ? ` (${profile.name})` : ""}` });
+  // GitHub's Date header survives in cached responses, so it tells us how old the data really is.
+  const served = Date.parse(userRes.headers.get("date") ?? "");
+  const dataAsOf = new Date(Number.isFinite(served) && served <= now + 60_000 ? served : now).toISOString();
+  const ageMin = Math.floor((now - Date.parse(dataAsOf)) / 60_000);
+  const freshness = ageMin >= 1 ? `, using GitHub data cached ${ageMin} min ago` : "";
+  emit({ type: "stage", stage: "profile", status: "done", detail: `Found @${profile.login}${profile.name ? ` (${profile.name})` : ""}${freshness}` });
 
   // 2. Repositories
   emit({ type: "stage", stage: "repos", status: "start" });
   let repos: RepoSummary[] = [];
   if (profile.publicRepos > 0) {
-    const repoRes = await ghGet(cfg, `/users/${u}/repos?type=owner&sort=pushed&direction=desc&per_page=${LIMITS.repos}`);
+    const repoRes = await ghGet(cfg, `/users/${u}/repos?type=owner&sort=pushed&direction=desc&per_page=${LIMITS.repos}`, { tag });
     const parsed = reposSchema.safeParse(repoRes.data ?? []);
     repos = parsed.success ? parsed.data.map(toRepo) : [];
   }
@@ -72,11 +78,17 @@ export async function collectFootprint(username: string, cfg: GitHubConfig, emit
   // 3. READMEs (+ pinned via GraphQL in parallel when a token exists)
   const readmeTargets = pickReadmeRepos(own);
   emit({ type: "stage", stage: "readmes", status: readmeTargets.length ? "start" : "skipped", detail: readmeTargets.length ? undefined : "No READMEs to read" });
-  const graphqlP = ghGraphQL(cfg, PINNED_QUERY, { login: profile.login });
+  const graphqlP = ghGraphQL(cfg, PINNED_QUERY, { login: profile.login }, tag);
   const readmes: ReadmeInsight[] = await Promise.all(
     readmeTargets.map(async (name) => {
-      const res = await ghGet(cfg, `/repos/${u}/${encodeURIComponent(name)}/readme`, { accept: "application/vnd.github.raw+json", raw: true, maxBytes: LIMITS.readmeBytes });
-      return analyzeReadme(name, res.status === 200 ? res.text : null);
+      const load = async () => {
+        const res = await ghGet(cfg, `/repos/${u}/${encodeURIComponent(name)}/readme`, { accept: "application/vnd.github.raw+json", raw: true, maxBytes: LIMITS.readmeBytes, tag });
+        return res.status === 200 ? res.text : null;
+      };
+      // A README only changes with a push, so pushed_at is a correct cache key, missing READMEs included.
+      const pushedAt = own.find((r) => r.name === name)?.pushedAt ?? "unknown";
+      const md = cfg.memo ? await cfg.memo(["readme:v1", username.toLowerCase(), name, pushedAt], [tag], load) : await load();
+      return analyzeReadme(name, md);
     }),
   );
   if (readmeTargets.length) {
@@ -86,7 +98,7 @@ export async function collectFootprint(username: string, cfg: GitHubConfig, emit
 
   // 4. Activity: public events + recent commit messages
   emit({ type: "stage", stage: "activity", status: "start" });
-  const eventsP = ghGet(cfg, `/users/${u}/events/public?per_page=100`).then((r) => {
+  const eventsP = ghGet(cfg, `/users/${u}/events/public?per_page=100`, { tag }).then((r) => {
     if (r.status !== 200) return null;
     const p = eventsSchema.safeParse(r.data);
     return p.success ? p.data : null;
@@ -94,7 +106,7 @@ export async function collectFootprint(username: string, cfg: GitHubConfig, emit
   const commitTargets = [...own].filter((r) => r.sizeKb > 0 && r.pushedAt).sort((a, b) => (b.pushedAt ?? "").localeCompare(a.pushedAt ?? "")).slice(0, LIMITS.commitRepos);
   const commitLists = await Promise.all(
     commitTargets.map(async (r) => {
-      const res = await ghGet(cfg, `/repos/${u}/${encodeURIComponent(r.name)}/commits?author=${u}&per_page=${LIMITS.commitsPerRepo}`);
+      const res = await ghGet(cfg, `/repos/${u}/${encodeURIComponent(r.name)}/commits?author=${u}&per_page=${LIMITS.commitsPerRepo}`, { tag });
       if (res.status !== 200) return []; // 409 = empty repo
       const p = commitsSchema.safeParse(res.data);
       return p.success ? p.data.map((c) => ({ repo: r.name, message: c.commit.message.split("\n")[0].slice(0, 120), date: c.commit.author?.date ?? null })) : [];
@@ -125,22 +137,6 @@ export async function collectFootprint(username: string, cfg: GitHubConfig, emit
     languages,
     facts: computeFacts({ profile, repos, readmes, commits, activity, languages, pinned, now }),
     fetchedAt: new Date(now).toISOString(),
+    dataAsOf,
   };
-}
-
-/** Per-instance cache so repeat roasts of one profile don't spend API quota. */
-const cache = new Map<string, { at: number; footprint: Footprint }>();
-const TTL = 15 * 60_000;
-
-export function cachedFootprint(username: string, now = Date.now()): Footprint | null {
-  const hit = cache.get(username.toLowerCase());
-  if (hit && now - hit.at < TTL) return hit.footprint;
-  return null;
-}
-export function storeFootprint(fp: Footprint, now = Date.now()) {
-  cache.set(fp.profile.login.toLowerCase(), { at: now, footprint: fp });
-  if (cache.size > 200) cache.delete(cache.keys().next().value!);
-}
-export function _clearFootprintCache() {
-  cache.clear();
 }

@@ -6,6 +6,7 @@ import { SiteNav } from "@/components/site/SiteNav";
 import { SiteFooter } from "@/components/site/SiteFooter";
 import { ReviewView } from "@/components/review/ReviewView";
 import { SharePanel } from "@/components/share/SharePanel";
+import { RoastForm } from "@/components/landing/RoastForm";
 import { decodeRecord, getSigningSecret } from "@/lib/share/token";
 import { siteHost } from "@/lib/social-sharing/links";
 
@@ -40,6 +41,18 @@ async function Result({ params }: { params: PageProps<"/r/[token]">["params"] })
       <section aria-labelledby="share" className="border-t border-line bg-panel/30">
         <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
           <SharePanel record={record} shareUrl={shareUrl} host={displayHost} />
+        </div>
+      </section>
+      <section aria-labelledby="refresh-title" className="border-t border-line">
+        <div className="mx-auto grid max-w-6xl gap-8 px-4 py-14 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16">
+          <div>
+            <h2 id="refresh-title" className="text-2xl font-semibold tracking-[-0.02em]">Changed your GitHub since?</h2>
+            <p className="mt-3 max-w-md text-[17px] leading-relaxed text-muted">
+              This link is a snapshot and always shows this roast. Fixed that README or finally archived the graveyard? Fetch the latest public data and get a
+              new roast with a new link.
+            </p>
+          </div>
+          <RoastForm variant="refresh" profile={record.profile.login} />
         </div>
       </section>
     </>

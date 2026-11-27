@@ -59,6 +59,8 @@ export interface RoastRecord {
   commits: CommitSample[];
   languages: LanguageShare[];
   pinned: string[] | null;
+  /** When GitHub served the data this roast is based on. */
+  dataAsOf?: string;
   source: RoastSource;
   model?: string;
   fallbackReason?: FallbackReason;

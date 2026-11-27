@@ -2,7 +2,7 @@ import type { ProfileSummary } from "@/types/github";
 import { Avatar } from "./Avatar";
 import { compact } from "./format";
 
-export function ProfileHeader({ profile, avatarSrc, linkable = true }: { profile: ProfileSummary; avatarSrc?: string | null; linkable?: boolean }) {
+export function ProfileHeader({ profile, avatarSrc, linkable = true, dataAsOf }: { profile: ProfileSummary; avatarSrc?: string | null; linkable?: boolean; dataAsOf?: string }) {
   const joined = new Date(profile.createdAt).getUTCFullYear();
   const stats = [
     { label: "public repos", value: compact(profile.publicRepos) },
@@ -36,6 +36,14 @@ export function ProfileHeader({ profile, avatarSrc, linkable = true }: { profile
             </div>
           ))}
         </dl>
+        {dataAsOf && (
+          <p className="mt-2 text-[13px] text-faint">
+            GitHub data as of{" "}
+            <time dateTime={dataAsOf}>
+              {new Date(dataAsOf).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "UTC" })} UTC
+            </time>
+          </p>
+        )}
       </div>
     </div>
   );

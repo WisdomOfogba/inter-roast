@@ -32,6 +32,7 @@ export function buildRecord(fp: Footprint, outcome: RoastOutcome, intensity: Int
     commits: fp.commits.filter((c) => cited.commit.has(c.id)),
     languages: fp.languages.slice(0, 8),
     pinned: fp.pinned,
+    dataAsOf: fp.dataAsOf,
     source: outcome.source,
     ...(outcome.model ? { model: outcome.model } : {}),
     ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),

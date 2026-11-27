@@ -32,6 +32,7 @@ const recordSchema = z
     commits: z.array(z.any()),
     languages: z.array(z.any()),
     pinned: z.array(z.string()).nullable(),
+    dataAsOf: z.string().optional(),
     source: z.enum(["gemini", "engine"]),
     model: z.string().max(60).optional(),
     fallbackReason: z.enum(["unconfigured", "quota", "unavailable", "invalid_output", "blocked"]).optional(),

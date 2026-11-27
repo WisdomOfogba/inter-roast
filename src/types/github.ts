@@ -88,6 +88,8 @@ export interface Footprint {
   languages: LanguageShare[];
   facts: Fact[];
   fetchedAt: string;
+  /** When GitHub served the profile (from its Date header; older if served from cache). */
+  dataAsOf: string;
 }
 
 export type CollectStage = "profile" | "repos" | "readmes" | "activity" | "roast";

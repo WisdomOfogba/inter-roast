@@ -7,9 +7,15 @@ import { route } from "./fixtures.mjs";
 
 const port = Number(process.env.PORT ?? 4010);
 const delay = Number(process.env.MOCK_DELAY_MS ?? 350);
+let count = 0; // GET /__stats returns how many API requests were served (for cache tests)
 
 http
   .createServer((req, res) => {
+    if (req.url === "/__stats") {
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ requests: count }));
+    }
+    count++;
     setTimeout(() => {
       if (req.url === "/graphql") {
         res.writeHead(200, { "content-type": "application/json" });

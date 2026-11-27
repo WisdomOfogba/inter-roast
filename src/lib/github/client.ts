@@ -21,7 +21,17 @@ export interface GitHubConfig {
   token: string | null;
   fetch: typeof fetch;
   timeoutMs: number;
+  /** Seconds a successful GitHub response stays fresh in Next's fetch cache (0 = no caching). */
+  cacheSeconds: number;
+  /**
+   * Optional persistent memo for results the fetch cache can't hold (e.g. a
+   * README 404). Injected by the route with unstable_cache; absent in tests.
+   */
+  memo?: <T>(key: string[], tags: string[], fn: () => Promise<T>) => Promise<T>;
 }
+
+/** Cache tag for everything fetched about one GitHub user. */
+export const githubTag = (username: string) => `github:${username.toLowerCase()}`;
 
 export function readGitHubConfig(env: NodeJS.ProcessEnv = process.env, fetchImpl: typeof fetch = fetch): GitHubConfig {
   return {
@@ -30,6 +40,7 @@ export function readGitHubConfig(env: NodeJS.ProcessEnv = process.env, fetchImpl
     token: env.GITHUB_TOKEN?.trim() || null,
     fetch: fetchImpl,
     timeoutMs: 10_000,
+    cacheSeconds: Number.isFinite(Number(env.GITHUB_CACHE_SECONDS)) && env.GITHUB_CACHE_SECONDS !== undefined ? Number(env.GITHUB_CACHE_SECONDS) : 900,
   };
 }
 
@@ -52,13 +63,23 @@ function rateLimitError(res: Response): GitHubError | null {
 }
 
 /**
+ * Next.js fetch cache (Vercel Data Cache in production): shared across
+ * instances, survives deploys, and only ever stores 200 responses, so errors
+ * and rate-limit replies are never cached. Tagged per user for invalidation.
+ */
+function cacheInit(cfg: GitHubConfig, tag?: string): RequestInit {
+  if (!cfg.cacheSeconds) return { cache: "no-store" };
+  return { cache: "force-cache", next: { revalidate: cfg.cacheSeconds, tags: ["github", ...(tag ? [tag] : [])] } } as RequestInit;
+}
+
+/**
  * GET a GitHub API path. Returns the status for 404/409/451 (callers decide),
  * throws GitHubError for rate limits, network failures and 5xx.
  */
 export async function ghGet<T = unknown>(
   cfg: GitHubConfig,
   path: string,
-  opts: { accept?: string; raw?: boolean; maxBytes?: number } = {},
+  opts: { accept?: string; raw?: boolean; maxBytes?: number; tag?: string } = {},
 ): Promise<GitHubResponse<T>> {
   const headers: Record<string, string> = {
     Accept: opts.accept ?? "application/vnd.github+json",
@@ -69,7 +90,7 @@ export async function ghGet<T = unknown>(
 
   let res: Response;
   try {
-    res = await cfg.fetch(`${cfg.baseUrl}${path}`, { headers, signal: AbortSignal.timeout(cfg.timeoutMs), cache: "no-store" });
+    res = await cfg.fetch(`${cfg.baseUrl}${path}`, { headers, signal: AbortSignal.timeout(cfg.timeoutMs), ...cacheInit(cfg, opts.tag) });
   } catch {
     throw new GitHubError("network", "Couldn't reach GitHub. Check your connection and try again.");
   }
@@ -93,7 +114,7 @@ export async function ghGet<T = unknown>(
 }
 
 /** Optional GraphQL call (only with a token). Failures are non-fatal. */
-export async function ghGraphQL(cfg: GitHubConfig, query: string, variables: Record<string, unknown>): Promise<unknown | null> {
+export async function ghGraphQL(cfg: GitHubConfig, query: string, variables: Record<string, unknown>, tag?: string): Promise<unknown | null> {
   if (!cfg.token) return null;
   try {
     const res = await cfg.fetch(`${cfg.baseUrl}/graphql`, {
@@ -101,7 +122,7 @@ export async function ghGraphQL(cfg: GitHubConfig, query: string, variables: Rec
       headers: { Authorization: `Bearer ${cfg.token}`, "Content-Type": "application/json", "User-Agent": "RepoRiot" },
       body: JSON.stringify({ query, variables }),
       signal: AbortSignal.timeout(cfg.timeoutMs),
-      cache: "no-store",
+      ...cacheInit(cfg, tag),
     });
     if (!res.ok) return null;
     return await res.json();
