@@ -22,6 +22,8 @@ export interface RoastStore {
   kind: "upstash" | "redis" | "memory";
   set(key: string, value: string, ttlSeconds: number): Promise<boolean>;
   get(key: string): Promise<string | null>;
+  /** Run raw Redis commands in one round trip (used for stats). */
+  pipeline(cmds: (string | number)[][]): Promise<unknown[]>;
 }
 
 function upstash(url: string, token: string, fetchImpl: typeof fetch): RoastStore {
@@ -45,6 +47,18 @@ function upstash(url: string, token: string, fetchImpl: typeof fetch): RoastStor
       const r = await call(["GET", k]);
       return typeof r === "string" ? r : null;
     },
+    pipeline: async (cmds) => {
+      const res = await fetchImpl(`${url.replace(/\/+$/, "")}/pipeline`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify(cmds),
+        cache: "no-store",
+        signal: AbortSignal.timeout(5000),
+      });
+      const data = (await res.json().catch(() => null)) as { result?: unknown; error?: string }[] | null;
+      if (!res.ok || !Array.isArray(data)) throw new Error(`Upstash pipeline ${res.status}`);
+      return data.map((d) => (d.error ? null : d.result));
+    },
   };
 }
 
@@ -53,6 +67,7 @@ interface MiniRedis {
   connect(): Promise<unknown>;
   set(k: string, v: string, o: { EX: number; NX: true }): Promise<string | null>;
   get(k: string): Promise<string | null>;
+  sendCommand(args: string[]): Promise<unknown>;
 }
 
 /** Plain Redis over TCP. One lazily-connected client per server instance. */
@@ -83,14 +98,38 @@ function redisUrl(url: string): RoastStore {
     kind: "redis",
     set: async (k, v, ttl) => (await run((c) => c.set(k, v, { EX: ttl, NX: true }))) === "OK",
     get: async (k) => run((c) => c.get(k)),
+    // node-redis auto-pipelines commands issued in the same tick.
+    pipeline: async (cmds) => run((c) => Promise.all(cmds.map((cmd) => c.sendCommand(cmd.map(String))))),
   };
 }
 
 const memory = (): RoastStore => {
-  const g = globalThis as unknown as { __reporiotStore?: Map<string, string> };
+  const g = globalThis as unknown as { __reporiotStore?: Map<string, string>; __reporiotSets?: Map<string, Map<string, number>> };
   g.__reporiotStore ??= new Map();
+  g.__reporiotSets ??= new Map();
   const m = g.__reporiotStore;
-  return { kind: "memory", set: async (k, v) => (m.has(k) ? false : (m.set(k, v), true)), get: async (k) => m.get(k) ?? null };
+  const sets = g.__reporiotSets;
+  const set = (k: string) => (sets.get(k) ?? sets.set(k, new Map()).get(k))!;
+  // Just enough Redis for development and tests.
+  const exec = (c: (string | number)[]): unknown => {
+    const [op, key, ...a] = c.map(String);
+    switch (op.toUpperCase()) {
+      case "INCR": { const n = Number(m.get(key) ?? 0) + 1; m.set(key, String(n)); return n; }
+      case "EXPIRE": return 1;
+      case "GET": return m.get(key) ?? null;
+      case "PFADD": { const st = set(key); const before = st.size; a.forEach((x) => st.set(x, 1)); return st.size > before ? 1 : 0; }
+      case "PFCOUNT": return set(key).size;
+      case "ZINCRBY": { const st = set(key); st.set(a[1], (st.get(a[1]) ?? 0) + Number(a[0])); return st.get(a[1]); }
+      case "ZREVRANGE": return [...set(key).entries()].sort((x, y) => y[1] - x[1]).slice(Number(a[0]), Number(a[1]) + 1).flatMap(([k, v]) => [k, String(v)]);
+      default: throw new Error(`memory store: unsupported ${op}`);
+    }
+  };
+  return {
+    kind: "memory",
+    set: async (k, v) => (m.has(k) ? false : (m.set(k, v), true)),
+    get: async (k) => m.get(k) ?? null,
+    pipeline: async (cmds) => cmds.map(exec),
+  };
 };
 
 /** Upstash if configured; an in-memory store in development; otherwise none. */
