@@ -77,9 +77,24 @@ body {
   color: #1a0a04;
 }
 
-:focus-visible {
-  outline: 2px solid var(--color-commit);
-  outline-offset: 2px;
+/* In the base layer so component utilities (e.g. an input's outline-none,
+   whose container shows focus instead) can override it. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--color-commit);
+    outline-offset: 2px;
+  }
+}
+
+/* JetBrains Mono ligatures turn "//" and "://" into joined glyphs. Great in an
+   editor, wrong for URLs, repo names and commit messages, so they're off. */
+.font-mono,
+code,
+kbd,
+pre,
+samp {
+  font-variant-ligatures: none;
+  font-feature-settings: "calt" 0, "liga" 0;
 }
 
 /* Display type: Bricolage at large optical size, tight but not cramped. */

@@ -188,10 +188,11 @@ export function RoastForm({ autoFocus = false, variant = "hero", profile: fixedP
               value={value}
               disabled={busy}
               onChange={(e) => {
-                setValue(e.target.value);
+                // "https://www.github.com/x" → "github.com/x": same profile, and it fits on phones.
+                setValue(e.target.value.replace(/^\s*https?:\/\/(www\.)?(?=github\.com\/)/i, ""));
                 if (fieldError) setFieldError(null);
               }}
-              placeholder="https://github.com/username"
+              placeholder="github.com/username"
               aria-invalid={!!fieldError}
               aria-describedby={fieldError ? `${id}-err` : `${id}-hint`}
               className="h-12 w-full min-w-0 bg-transparent font-mono text-[15px] text-fg placeholder:text-faint focus:outline-none disabled:opacity-60 sm:text-base"

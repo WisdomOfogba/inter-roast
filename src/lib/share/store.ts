@@ -1,4 +1,5 @@
 import { deflateRawSync, inflateRawSync } from "node:zlib";
+import { createClient } from "redis";
 import type { RoastRecord } from "@/types/roast";
 import { recordSchema } from "./token";
 
@@ -7,8 +8,10 @@ import { recordSchema } from "./token";
  * (REST API, free tier: 256 MB / 500K commands a month) when configured.
  * Without a store, callers fall back to the long signed token links.
  *
- * Env (either pair works; Vercel's Upstash integration sets the KV_* names):
- *   KV_REST_API_URL + KV_REST_API_TOKEN, or UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN
+ * Env, checked in this order:
+ *   KV_REST_API_URL + KV_REST_API_TOKEN        (Vercel's Upstash integration)
+ *   UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN  (Upstash console)
+ *   REDIS_URL / KV_URL                          (any Redis, e.g. Vercel's "Redis" by Redis Inc.)
  */
 
 export const SHORT_ID = /^[a-z0-9](?:[a-z0-9-]{0,38})-[a-z0-9]{6}$/;
@@ -16,7 +19,7 @@ const TTL_SECONDS = 365 * 24 * 60 * 60;
 const ALPHABET = "abcdefghijkmnpqrstuvwxyz23456789"; // no l/o/0/1: easy to read aloud
 
 export interface RoastStore {
-  kind: "upstash" | "memory";
+  kind: "upstash" | "redis" | "memory";
   set(key: string, value: string, ttlSeconds: number): Promise<boolean>;
   get(key: string): Promise<string | null>;
 }
@@ -45,6 +48,44 @@ function upstash(url: string, token: string, fetchImpl: typeof fetch): RoastStor
   };
 }
 
+/** The three commands we use; avoids leaking node-redis's generic client types. */
+interface MiniRedis {
+  connect(): Promise<unknown>;
+  set(k: string, v: string, o: { EX: number; NX: true }): Promise<string | null>;
+  get(k: string): Promise<string | null>;
+}
+
+/** Plain Redis over TCP. One lazily-connected client per server instance. */
+function redisUrl(url: string): RoastStore {
+  const g = globalThis as unknown as { __reporiotRedis?: { url: string; client: MiniRedis; ready: Promise<unknown> } };
+  const handle = () => {
+    let h = g.__reporiotRedis;
+    if (!h || h.url !== url) {
+      const c = createClient({ url, socket: { connectTimeout: 5000, reconnectStrategy: false } });
+      c.on("error", () => {}); // surfaced through the failing command instead
+      const client = c as unknown as MiniRedis;
+      h = { url, client, ready: client.connect() };
+      g.__reporiotRedis = h;
+    }
+    return h;
+  };
+  const run = async <T,>(fn: (c: MiniRedis) => Promise<T>): Promise<T> => {
+    const h = handle();
+    try {
+      await h.ready;
+      return await fn(h.client);
+    } catch (e) {
+      g.__reporiotRedis = undefined; // reconnect next time
+      throw e;
+    }
+  };
+  return {
+    kind: "redis",
+    set: async (k, v, ttl) => (await run((c) => c.set(k, v, { EX: ttl, NX: true }))) === "OK",
+    get: async (k) => run((c) => c.get(k)),
+  };
+}
+
 const memory = (): RoastStore => {
   const g = globalThis as unknown as { __reporiotStore?: Map<string, string> };
   g.__reporiotStore ??= new Map();
@@ -57,6 +98,8 @@ export function getStore(env: NodeJS.ProcessEnv = process.env, fetchImpl: typeof
   const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
   const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
   if (url && token) return upstash(url, token, fetchImpl);
+  const tcp = env.REDIS_URL || env.KV_URL;
+  if (tcp && /^rediss?:\/\//.test(tcp)) return redisUrl(tcp);
   if (env.NODE_ENV !== "production" || env.ROAST_MEMORY_STORE === "1") return memory();
   return null;
 }
@@ -98,5 +141,25 @@ export async function loadRecord(id: string, store: RoastStore | null = getStore
   } catch (e) {
     console.error("[share] could not read roast:", e instanceof Error ? e.message : "unknown");
     return null;
+  }
+}
+
+/** Which store env vars are present (names only, never values). */
+export function storeEnvPresence(env: NodeJS.ProcessEnv = process.env) {
+  const names = ["KV_REST_API_URL", "KV_REST_API_TOKEN", "UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN", "REDIS_URL", "KV_URL"] as const;
+  return Object.fromEntries(names.map((n) => [n, !!env[n]?.trim()])) as Record<(typeof names)[number], boolean>;
+}
+
+/** Live write + read of a throwaway key, for the health check. */
+export async function checkStore(store: RoastStore | null = getStore()): Promise<{ ok: boolean; error?: string }> {
+  if (!store) return { ok: false, error: "no store configured" };
+  try {
+    const key = `health:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`;
+    if (!(await store.set(key, "ok", 60))) return { ok: false, error: "write was refused" };
+    return (await store.get(key)) === "ok" ? { ok: true } : { ok: false, error: "read did not return the written value" };
+  } catch (e) {
+    // Error messages from Upstash/redis don't include credentials; strip URLs just in case.
+    const msg = e instanceof Error ? e.message : "unknown error";
+    return { ok: false, error: msg.replace(/\w+:\/\/\S+/g, "[url]").slice(0, 200) };
   }
 }
