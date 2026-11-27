@@ -12,7 +12,7 @@ import { INTENSITIES, type RoastRecord } from "@/types/roast";
 const MAX_TOKEN_LENGTH = 12_000;
 
 /** The HMAC already proves we wrote it; this guards shape and version. */
-const recordSchema = z
+export const recordSchema = z
   .object({
     v: z.literal(2),
     caseId: z.string().regex(/^[A-Z0-9-]{4,16}$/),

@@ -54,6 +54,22 @@ export function RoastForm({ autoFocus = false, variant = "hero", profile: fixedP
   const [failure, setFailure] = useState<Failure | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const logRef = useRef<HTMLDivElement>(null);
+
+  // Bring the live log into view as soon as work starts (it renders below the form,
+  // often off-screen on phones).
+  useEffect(() => {
+    if (phase !== "running") return;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const id = requestAnimationFrame(() => {
+      const el = logRef.current;
+      if (!el) return;
+      // Put the log just under the sticky nav (56px) with a little breathing room.
+      const top = el.getBoundingClientRect().top + window.scrollY - 72;
+      if (Math.abs(top - window.scrollY) > 8) window.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [phase]);
 
   useEffect(() => {
     if (autoFocus) inputRef.current?.focus();
@@ -112,7 +128,7 @@ export function RoastForm({ autoFocus = false, variant = "hero", profile: fixedP
             setNotes((n) => [...n, msg.message]);
           } else if (msg.type === "result") {
             setPhase("done");
-            router.push(`/r/${msg.token}`);
+            router.push(msg.path);
             return;
           } else if (msg.type === "error") {
             setFailure(msg);
@@ -233,7 +249,7 @@ export function RoastForm({ autoFocus = false, variant = "hero", profile: fixedP
       </form>
 
       {phase !== "idle" && (
-        <div className="mt-5 overflow-hidden rounded-lg border border-line bg-[#0b0d0c]" role="status" aria-live="polite">
+        <div ref={logRef} className="mt-5 scroll-mt-20 overflow-hidden rounded-lg border border-line bg-[#0b0d0c]" role="status" aria-live="polite">
           <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
             <span className="font-mono text-[13px] text-muted">reporiot roast</span>
             {phase === "running" && <LoaderCircle className="size-4 animate-spin text-commit" aria-label="Working" />}

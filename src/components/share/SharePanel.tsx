@@ -112,10 +112,13 @@ export function SharePanel({ record, shareUrl, host }: { record: RoastRecord; sh
   const { width, height } = CARD_SIZES[format];
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-start">
-      <div>
-        <h2 id="share" className="display text-[clamp(1.75rem,4vw,2.5rem)]">Share the damage</h2>
-        <p className="mt-3 max-w-md text-[17px] leading-relaxed text-muted">The link opens this exact roast. The image is made for X, LinkedIn and group chats.</p>
+    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] lg:items-start lg:gap-8">
+      <div className="order-2 lg:order-1">
+        <h2 id="share" className="display text-[clamp(1.6rem,4vw,2.5rem)]">Share the damage</h2>
+        <p className="mt-2 max-w-md text-[16px] leading-relaxed text-muted sm:text-[17px]">
+          The link opens this exact roast. The image is made for X, LinkedIn and group chats.
+          <a href="#roast-content" className="ml-1 text-commit underline-offset-4 hover:underline lg:hidden">Read the full roast</a>
+        </p>
 
         <div className="mt-6 inline-flex rounded-lg border border-line bg-panel p-1" role="radiogroup" aria-label="Image size">
           {(Object.keys(CARD_SIZES) as CardFormat[]).map((f) => (
@@ -149,13 +152,15 @@ export function SharePanel({ record, shareUrl, host }: { record: RoastRecord; sh
           </button>
           <button type="button" onClick={() => copy("text")} className={btn}>
             {copied === "text" ? <Check className="size-4 text-commit" aria-hidden /> : <Copy className="size-4" aria-hidden />}
-            Copy roast text
+            <span className="sm:hidden">Copy text</span>
+            <span className="hidden sm:inline">Copy roast text</span>
           </button>
           <a href={xShareUrl(text, shareUrl)} target="_blank" rel="noopener noreferrer" className={btn}>
             Post on X
           </a>
           <a href={linkedInShareUrl(shareUrl)} target="_blank" rel="noopener noreferrer" className={btn}>
-            Share on LinkedIn
+            <span className="sm:hidden">LinkedIn</span>
+            <span className="hidden sm:inline">Share on LinkedIn</span>
           </a>
         </div>
         <p className="mt-3 min-h-6 text-[14px] text-muted" role="status" aria-live="polite">
@@ -166,7 +171,7 @@ export function SharePanel({ record, shareUrl, host }: { record: RoastRecord; sh
         </Link>
       </div>
 
-      <div className={format === "portrait" ? "mx-auto w-full max-w-[360px]" : "w-full"}>
+      <div className={`order-1 lg:order-2 ${format === "portrait" ? "mx-auto w-full max-w-[300px] sm:max-w-[360px]" : "w-full"}`}>
         <div className="overflow-hidden rounded-lg border border-line shadow-[0_24px_60px_-30px_rgba(0,0,0,0.8)]">
           <ScaledCard width={width} height={height} label="Preview of the share image">
             <ShareCard record={record} format={format} host={host} />

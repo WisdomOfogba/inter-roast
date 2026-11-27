@@ -50,7 +50,7 @@ export function ReviewView({ record, compact = false, avatarSrc, now, linkable =
 
   return (
     <div className={compact ? "" : "grid gap-12 lg:grid-cols-[minmax(0,1fr)_320px] lg:gap-14"}>
-      <article aria-labelledby={`headline-${record.caseId}`} className="min-w-0">
+      <article id={compact ? undefined : "roast-content"} aria-labelledby={`headline-${record.caseId}`} className="min-w-0 scroll-mt-16">
         <ProfileHeader profile={record.profile} avatarSrc={avatarSrc} linkable={linkable} dataAsOf={compact ? undefined : record.dataAsOf} />
 
         <div className="mt-10">

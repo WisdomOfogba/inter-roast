@@ -10,6 +10,7 @@ import { getRoastCached } from "@/lib/roast/cache";
 import { createRoast } from "@/lib/roast";
 import { buildRecord } from "@/lib/roast/record";
 import { encodeRecord, getSigningSecret, newCaseId } from "@/lib/share/token";
+import { saveRecord } from "@/lib/share/store";
 import { clientKey, RateLimiter } from "@/lib/rate-limit";
 
 /**
@@ -108,7 +109,10 @@ export async function POST(request: Request) {
               ? "Roast written by Gemini"
               : "Roast written by the rules engine",
         });
-        send({ type: "result", token: encodeRecord(record, secret), source: outcome.source, fallbackReason: outcome.fallbackReason ?? null });
+        // Short link when a store is configured; otherwise the long self-contained signed link.
+        const id = await saveRecord(record);
+        const path = `/r/${id ?? encodeRecord(record, secret)}`;
+        send({ type: "result", path, source: outcome.source, fallbackReason: outcome.fallbackReason ?? null });
       } catch (err) {
         if (err instanceof GitHubError) {
           send({ type: "error", code: err.code, message: err.message, ...(err.resetAt ? { resetAt: err.resetAt } : {}) });

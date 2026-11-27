@@ -7,12 +7,13 @@ import { SiteFooter } from "@/components/site/SiteFooter";
 import { ReviewView } from "@/components/review/ReviewView";
 import { SharePanel } from "@/components/share/SharePanel";
 import { RoastForm } from "@/components/landing/RoastForm";
-import { decodeRecord, getSigningSecret } from "@/lib/share/token";
+import { ScrollToTop } from "@/components/site/ScrollToTop";
+import { resolveRecord } from "@/lib/share/resolve";
 import { siteHost } from "@/lib/social-sharing/links";
 
 export async function generateMetadata({ params }: PageProps<"/r/[token]">): Promise<Metadata> {
   const { token } = await params;
-  const record = decodeRecord(token, getSigningSecret());
+  const record = await resolveRecord(token);
   if (!record) return { title: "Roast not found", robots: { index: false } };
   const title = `@${record.profile.login}: ${record.result.archetype}`;
   return {
@@ -26,7 +27,7 @@ export async function generateMetadata({ params }: PageProps<"/r/[token]">): Pro
 
 async function Result({ params }: { params: PageProps<"/r/[token]">["params"] }) {
   const { token } = await params;
-  const record = decodeRecord(token, getSigningSecret());
+  const record = await resolveRecord(token);
   if (!record) notFound();
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
@@ -34,16 +35,18 @@ async function Result({ params }: { params: PageProps<"/r/[token]">["params"] })
   const shareUrl = `${proto}://${host}/r/${token}`;
   const displayHost = process.env.NEXT_PUBLIC_SITE_URL ? siteHost(process.env.NEXT_PUBLIC_SITE_URL) : host;
   return (
-    <>
-      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 sm:py-16">
+    <div className="flex flex-col">
+      <ScrollToTop />
+      {/* Mobile: the share card comes first so it's the first thing people find. Desktop: after the roast. */}
+      <div className="order-2 mx-auto w-full max-w-6xl px-4 py-12 sm:px-6 sm:py-16 lg:order-1">
         <ReviewView record={record} />
       </div>
-      <section aria-labelledby="share" className="border-t border-line bg-panel/30">
-        <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
+      <section aria-labelledby="share" className="order-1 border-b border-line bg-panel/30 lg:order-2 lg:border-b-0 lg:border-t">
+        <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6 sm:py-14 lg:py-20">
           <SharePanel record={record} shareUrl={shareUrl} host={displayHost} />
         </div>
       </section>
-      <section aria-labelledby="refresh-title" className="border-t border-line">
+      <section aria-labelledby="refresh-title" className="order-3 border-t border-line">
         <div className="mx-auto grid max-w-6xl gap-8 px-4 py-14 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-16">
           <div>
             <h2 id="refresh-title" className="text-2xl font-semibold tracking-[-0.02em]">Changed your GitHub since?</h2>
@@ -55,7 +58,7 @@ async function Result({ params }: { params: PageProps<"/r/[token]">["params"] })
           <RoastForm variant="refresh" profile={record.profile.login} />
         </div>
       </section>
-    </>
+    </div>
   );
 }
 
