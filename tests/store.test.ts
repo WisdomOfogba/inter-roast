@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getStore, loadRecord, newShortId, saveRecord, SHORT_ID } from "@/lib/share/store";
+import { checkStore, getStore, loadRecord, newShortId, saveRecord, SHORT_ID, storeEnvPresence } from "@/lib/share/store";
 import { collectFootprint } from "@/lib/github/collect";
 import { readGitHubConfig } from "@/lib/github/client";
 import { createRoast } from "@/lib/roast";
@@ -71,6 +71,30 @@ describe("short share links", () => {
     expect(getStore({ NODE_ENV: "production" } as unknown as NodeJS.ProcessEnv)).toBeNull();
     expect(getStore({ NODE_ENV: "development" } as unknown as NodeJS.ProcessEnv)?.kind).toBe("memory");
     expect(getStore({ UPSTASH_REDIS_REST_URL: "u", UPSTASH_REDIS_REST_TOKEN: "t", NODE_ENV: "production" } as unknown as NodeJS.ProcessEnv)?.kind).toBe("upstash");
+  });
+
+  it("supports a plain REDIS_URL (e.g. Vercel's Redis Cloud integration)", () => {
+    expect(getStore({ REDIS_URL: "rediss://default:pw@example:6379", NODE_ENV: "production" } as unknown as NodeJS.ProcessEnv)?.kind).toBe("redis");
+    expect(getStore({ KV_URL: "redis://localhost:6379", NODE_ENV: "production" } as unknown as NodeJS.ProcessEnv)?.kind).toBe("redis");
+    // REST vars win when both are present
+    expect(getStore({ ...env, REDIS_URL: "redis://x" } as unknown as NodeJS.ProcessEnv, fakeUpstash().f)?.kind).toBe("upstash");
+  });
+
+  it.runIf(process.env.TEST_REDIS_URL)("round-trips through a real Redis server over TCP", async () => {
+    const store = getStore({ REDIS_URL: process.env.TEST_REDIS_URL, NODE_ENV: "production" } as unknown as NodeJS.ProcessEnv)!;
+    expect(await checkStore(store)).toEqual({ ok: true });
+    const rec = await record();
+    const id = await saveRecord(rec, store);
+    expect(id).toMatch(/^lena-bytes-/);
+    expect(await loadRecord(id!, store)).toEqual(rec);
+  });
+
+  it("health check reports a broken store without leaking URLs", async () => {
+    const r = await checkStore(getStore(env, fakeUpstash({ down: true }).f));
+    expect(r.ok).toBe(false);
+    expect(r.error).not.toMatch(/https?:\/\//);
+    expect(await checkStore(null)).toEqual({ ok: false, error: "no store configured" });
+    expect(storeEnvPresence({ KV_REST_API_URL: "x" } as unknown as NodeJS.ProcessEnv)).toMatchObject({ KV_REST_API_URL: true, REDIS_URL: false });
   });
 
   it("rejects malformed ids without touching the store", async () => {

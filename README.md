@@ -53,8 +53,9 @@ No database is needed. Next.js caches give persistence shared across serverless 
 With a store configured, roasts are saved under readable ids and links look like `https://your-site/r/octocat-k7q2xm`. Stored roasts never change, so page views go through a persistent cache and cost about one Redis read per link, not one per view. Entries expire after a year.
 
 1. In Vercel, open **Storage** (or the **Marketplace**), add **Upstash for Redis**, and connect it to the project. The free tier is 256 MB and 500K commands a month, with no card required.
-2. The integration adds `KV_REST_API_URL` and `KV_REST_API_TOKEN`. `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` also work if you create the database on upstash.com.
+2. The integration adds `KV_REST_API_URL` and `KV_REST_API_TOKEN`. `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` also work if you create the database on upstash.com, and so does a plain `REDIS_URL` / `KV_URL` (any Redis provider, for example Vercel's "Redis" by Redis Inc.).
 3. Redeploy.
+4. Open `/api/health?check=1` on your site. It reports whether links will be short and runs a live write and read against the store. It shows only yes/no flags and variable names, never values.
 
 Without a store, or if a write fails, RepoRiot falls back to a long self-contained signed link, so roasting never breaks. Existing long links keep working after you add the store.
 
