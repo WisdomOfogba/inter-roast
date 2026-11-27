@@ -7,5 +7,6 @@ export function siteUrl(): string {
   return "http://localhost:3000";
 }
 
-export const SITE_NAME = "Internet Roast";
-export const TAGLINE = "The internet has receipts. Let's use them.";
+export const SITE_NAME = "RepoRiot";
+export const TAGLINE = "Your code has receipts.";
+export const SOURCE_URL = "https://github.com/WisdomOfogba/inter-roast";

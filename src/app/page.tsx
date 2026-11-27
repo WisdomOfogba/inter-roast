@@ -1,28 +1,29 @@
-import Link from "next/link";
-import { ArrowUpRight } from "lucide-react";
-import { Masthead } from "@/components/ui/Masthead";
-import { SiteFooter } from "@/components/ui/SiteFooter";
-import { HandleForm } from "@/components/landing/HandleForm";
-import { ExampleCard } from "@/components/landing/ExampleCard";
-import { Ticker } from "@/components/landing/Ticker";
-import { siteUrl } from "@/lib/site";
+import { SiteNav } from "@/components/site/SiteNav";
+import { SiteFooter } from "@/components/site/SiteFooter";
+import { RoastForm } from "@/components/landing/RoastForm";
+import { BurningGraph } from "@/components/landing/BurningGraph";
+import { ReviewView } from "@/components/review/ReviewView";
+import { ExampleShareCard } from "@/components/landing/ExampleShareCard";
+import { ReadTree } from "@/components/landing/ReadTree";
+import { EXAMPLE_NOW, EXAMPLE_RECORD } from "@/lib/example";
 import { siteHost } from "@/lib/social-sharing/links";
+import { siteUrl } from "@/lib/site";
 
 const STEPS = [
   {
-    n: "01",
-    title: "Bring the receipts",
-    body: "Copy a handful of your Reddit posts, comments or your bio and paste them in. Five to ten is the sweet spot. The more you give, the more personal it gets.",
+    title: "Drop your GitHub profile",
+    body: "Paste a link like github.com/your-username. No login, no OAuth, nothing to install.",
+    code: "github.com/your-username",
   },
   {
-    n: "02",
-    title: "We read every word",
-    body: "Our roast writer looks for recurring topics, verbal tics, contradictions and how you argue, then picks your internet personality. It only uses what you pasted.",
+    title: "We inspect your public footprint",
+    body: "Your profile, up to 100 recently pushed repos, up to 5 READMEs, your public events and a sample of recent commit messages, all from the official GitHub API.",
+    code: "GET /users/{user}/repos?sort=pushed",
   },
   {
-    n: "03",
-    title: "You get exposed",
-    body: "A personality title, a full roast, three observations with receipts, and a share card sized for posts and Stories. Then you roast your friends.",
+    title: "Get your code review",
+    body: "Gemini writes the roast as review comments. Every repo, commit and number it cites is checked against what GitHub returned before you see it.",
+    code: "Changes requested",
   },
 ];
 
@@ -30,109 +31,95 @@ export default function Home() {
   const host = siteHost(siteUrl());
   return (
     <>
-      <Masthead />
+      <SiteNav />
       <main id="main" className="flex-1">
-        {/* HERO */}
-        <section className="grain border-b-2 border-ink">
-          <div className="mx-auto grid max-w-7xl gap-12 px-4 pb-14 pt-8 sm:px-6 sm:pt-12 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,0.65fr)] lg:gap-10 lg:pb-20">
-            <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 border-b-2 border-ink pb-3 font-mono text-[11px] uppercase tracking-[0.16em]">
-                <span className="bg-ink px-2 py-0.5 text-acid">Issue 001</span>
-                <span>The roast issue</span>
-                <span className="text-stone">Reddit edition</span>
-              </div>
-
-              <h1 className="mt-6 font-display text-[clamp(3.4rem,14.5vw,6.5rem)] uppercase leading-[0.9] tracking-[-0.01em] lg:text-[clamp(5.5rem,8.4vw,8.6rem)]">
-                The internet
-                <br />
-                has <span className="relative inline-block">
-                  <span className="relative z-10">receipts.</span>
-                  <span aria-hidden className="absolute inset-x-[-0.04em] bottom-[0.08em] top-[0.52em] -z-0 bg-acid" />
-                </span>
-              </h1>
-
-              <p className="mt-6 max-w-2xl font-serif text-[clamp(1.6rem,4.6vw,2.6rem)] italic leading-[1.08]">
-                Let&apos;s see what your digital personality says about you.
+        {/* Hero */}
+        <section id="roast" className="scroll-mt-14 border-b border-line">
+          <div className="mx-auto max-w-6xl px-4 pb-14 pt-12 sm:px-6 sm:pt-20">
+            <div className="grid gap-12 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-end">
+            <div className="max-w-3xl">
+              <h1 className="display text-[clamp(2.6rem,8vw,5.25rem)] [text-wrap:balance]">Your GitHub has some explaining to do.</h1>
+              <p className="mt-5 max-w-[58ch] text-lg leading-relaxed text-muted sm:text-xl">
+                Drop your GitHub profile. We&apos;ll inspect your public repositories, investigate your README files and expose your developer habits.
               </p>
-              <p className="mt-4 max-w-xl text-base leading-relaxed text-ink/80 sm:text-lg">
-                Drop your Reddit profile or bring your own posts. We&apos;ll find your internet personality and roast you accordingly.
-              </p>
-
-              <div className="mt-8">
-                <HandleForm />
-                <Link
-                  href="/roast"
-                  className="mt-5 inline-flex min-h-11 items-center gap-1.5 font-mono text-[13px] font-semibold uppercase tracking-[0.1em] underline decoration-2 underline-offset-4 hover:text-heat-deep"
-                >
-                  No username? Just paste your posts <ArrowUpRight className="size-4" aria-hidden />
-                </Link>
+              <div className="mt-9 max-w-2xl">
+                <RoastForm />
               </div>
             </div>
+            <div className="hidden lg:block">
+              <ReadTree />
+            </div>
+            </div>
+            <figure className="mt-14 sm:mt-16">
+              <BurningGraph className="w-full" />
+              <figcaption className="mt-3 flex justify-between gap-4 text-[13px] text-faint">
+                <span>Your contribution graph</span>
+                <span>Your contribution graph after review</span>
+              </figcaption>
+            </figure>
+          </div>
+        </section>
 
-            <div className="flex items-center justify-center lg:justify-end lg:pt-10">
-              <ExampleCard host={host} />
+        {/* Example */}
+        <section id="example" aria-labelledby="example-title" className="scroll-mt-14 border-b border-line">
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+            <div className="grid gap-10 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-16">
+              <div className="lg:pt-2">
+                <h2 id="example-title" className="display text-[clamp(2rem,5vw,3rem)]">What a roast looks like</h2>
+                <p className="mt-4 max-w-md text-[17px] leading-relaxed text-muted">
+                  A verdict, a diagnosis, and review comments with the receipts attached: the actual repos, READMEs and commit messages behind each joke.
+                </p>
+                <p className="mt-6 inline-flex items-center gap-2 rounded-md border border-amber/30 bg-amber/10 px-3 py-2 text-[14px] text-amber">
+                  Fictional profile and data, made up for this example.
+                </p>
+              </div>
+              <div className="rounded-xl border border-line bg-panel/40 p-4 sm:p-7">
+                <ReviewView record={EXAMPLE_RECORD} compact avatarSrc={null} now={EXAMPLE_NOW} linkable={false} />
+              </div>
             </div>
           </div>
         </section>
 
-        <Ticker />
-
-        {/* HOW IT WORKS */}
-        <section aria-labelledby="how" className="border-b-2 border-ink">
-          <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6 sm:py-20">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <h2 id="how" className="font-display text-5xl uppercase leading-none sm:text-7xl">How it works</h2>
-              <p className="font-mono text-[11px] uppercase tracking-[0.16em] text-stone">Three steps · about a minute · zero dignity</p>
-            </div>
-            <ol className="mt-10 border-t-2 border-ink">
-              {STEPS.map((s) => (
-                <li key={s.n} className="grid gap-3 border-b-2 border-ink py-7 sm:grid-cols-[120px_minmax(0,0.9fr)_minmax(0,1.1fr)] sm:items-baseline sm:gap-8">
-                  <span className="font-display text-6xl leading-none text-heat sm:text-7xl">{s.n}</span>
-                  <h3 className="font-display text-3xl uppercase leading-none sm:text-4xl">{s.title}</h3>
-                  <p className="max-w-xl text-base leading-relaxed text-ink/80 sm:text-lg">{s.body}</p>
+        {/* How it works */}
+        <section id="how" aria-labelledby="how-title" className="scroll-mt-14 border-b border-line">
+          <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6 sm:py-24">
+            <h2 id="how-title" className="display text-[clamp(2rem,5vw,3rem)]">How it works</h2>
+            <ol className="mt-10 grid gap-px overflow-hidden rounded-xl border border-line bg-line md:grid-cols-3">
+              {STEPS.map((s, i) => (
+                <li key={s.title} className="flex flex-col bg-canvas p-6 sm:p-7">
+                  <span className="font-mono text-[14px] text-commit">Step {i + 1}</span>
+                  <h3 className="mt-3 text-xl font-semibold tracking-[-0.02em]">{s.title}</h3>
+                  <p className="mt-2 flex-1 text-[16px] leading-relaxed text-muted">{s.body}</p>
+                  <code className="mt-6 block overflow-x-auto whitespace-nowrap rounded-md border border-line bg-panel px-3 py-2 font-mono text-[13px] text-fg/80">
+                    {s.code}
+                  </code>
                 </li>
               ))}
             </ol>
+            <p className="mt-6 max-w-2xl text-[15px] leading-relaxed text-muted">
+              We only see what GitHub shows the public. Private repositories, private contributions and anything behind a login stay invisible, so the roast never
+              guesses about them.
+            </p>
           </div>
         </section>
 
-        {/* PRIVACY + DISCLAIMER */}
-        <section aria-labelledby="privacy" className="bg-paper-2">
-          <div className="mx-auto grid max-w-7xl gap-10 px-4 py-14 sm:px-6 sm:py-20 md:grid-cols-2">
+        {/* Sharing */}
+        <section aria-labelledby="share-title">
+          <div className="mx-auto grid max-w-6xl items-center gap-10 px-4 py-16 sm:px-6 sm:py-24 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)] lg:gap-16">
             <div>
-              <h2 id="privacy" className="font-display text-4xl uppercase leading-none sm:text-5xl">What happens to your stuff</h2>
-              <ul className="mt-6 space-y-4 text-base leading-relaxed">
-                {[
-                  ["Nothing is stored.", "No database, no accounts. Your pasted text is used once to write the roast, then discarded."],
-                  ["Nothing is scraped.", "Reddit's API requires approval we don't have, so we never fetch your profile. You choose exactly what to share."],
-                  ["Share links carry the roast, not your posts.", "The link is a signed copy of the result. It may quote a line or two of yours, so share wisely."],
-                  ["AI processing.", "When enabled, your text is sent to Google's Gemini API to write the roast. On its free tier, Google may use inputs to improve its products. Don't paste anything private."],
-                ].map(([t, b]) => (
-                  <li key={t} className="grid grid-cols-[18px_minmax(0,1fr)] gap-3">
-                    <span aria-hidden className="mt-2 inline-block size-2.5 rotate-45 bg-ink" />
-                    <span>
-                      <strong className="font-bold">{t}</strong> <span className="text-ink/80">{b}</span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="self-start border-2 border-ink bg-paper p-6 sm:p-8">
-              <p className="inline-block -rotate-2 border-2 border-heat px-3 py-1 font-display text-2xl tracking-wide text-heat">DISCLAIMER</p>
-              <p className="mt-5 font-serif text-2xl italic leading-snug sm:text-3xl">
-                This is comedy, not a psychological assessment. We roast posting habits, not people.
+              <h2 id="share-title" className="display text-[clamp(2rem,5vw,3rem)]">Built to be screenshotted</h2>
+              <p className="mt-4 max-w-md text-[17px] leading-relaxed text-muted">
+                Every roast gets its own link and a share image sized for X, LinkedIn and group chats. Roast yourself first, then send it to the friend who
+                still commits straight to main.
               </p>
-              <p className="mt-4 text-base leading-relaxed text-ink/80">
-                No diagnoses, no judgments about who you are, and nothing about sensitive stuff like health, identity or background. Only roast yourself, or a
-                friend who has agreed to be roasted.
-              </p>
-              <Link
-                href="/roast"
-                className="mt-6 inline-flex min-h-12 items-center gap-2 bg-ink px-5 font-display text-xl tracking-wide text-acid transition-colors hover:bg-heat hover:text-ink"
+              <a
+                href="#roast"
+                className="mt-7 inline-flex min-h-12 items-center rounded-md bg-commit px-5 text-base font-semibold text-commit-ink transition-colors hover:bg-commit-hover"
               >
-                I&apos;M READY. ROAST ME <ArrowUpRight className="size-5" aria-hidden />
-              </Link>
+                Roast a profile
+              </a>
             </div>
+            <ExampleShareCard host={host} />
           </div>
         </section>
       </main>

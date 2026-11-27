@@ -1,24 +1,17 @@
 import { ApiError, GoogleGenAI, ThinkingLevel, type GenerateContentResponse } from "@google/genai";
-import type { FallbackReason, Intensity, PreparedSubmission, RoastResult } from "@/types/roast";
-import {
-  BlockedOutputError,
-  InvalidOutputError,
-  parseModelOutput,
-  roastOutputJsonSchema,
-} from "@/lib/validation/roast-output";
+import type { Footprint } from "@/types/github";
+import type { FallbackReason, Intensity, RoastResult } from "@/types/roast";
+import { BlockedOutputError, InvalidOutputError, parseModelOutput, roastOutputJsonSchema } from "@/lib/validation/roast-output";
 import { buildUserPrompt, SYSTEM_INSTRUCTION } from "./prompt";
 
-/**
- * Server-only Gemini integration. Never import this from a client component:
- * it reads GEMINI_API_KEY from the environment.
- */
+/** Server-only. Reads GEMINI_API_KEY; never import from client components. */
 
 /** Verified free-tier models (Gemini API pricing page, Nov 2026). */
 export const DEFAULT_MODEL = "gemini-3.8-flash";
 export const DEFAULT_QUOTA_FALLBACK_MODEL = "gemini-3.5-flash-lite";
 
-const REQUEST_TIMEOUT_MS = 25_000;
-const MAX_OUTPUT_TOKENS = 4096; // includes thinking tokens; the JSON itself is ~700
+const REQUEST_TIMEOUT_MS = 30_000;
+const MAX_OUTPUT_TOKENS = 6000; // includes thinking tokens; the JSON itself is ~1k
 
 export class GeminiFailure extends Error {
   constructor(
@@ -54,11 +47,8 @@ export interface GenerateClient {
 let cachedClient: { key: string; client: GoogleGenAI } | null = null;
 function getClient(apiKey: string): GoogleGenAI {
   if (cachedClient?.key !== apiKey) {
-    cachedClient = {
-      key: apiKey,
-      // attempts: 1 => the SDK never auto-retries (retries would burn free quota).
-      client: new GoogleGenAI({ apiKey, httpOptions: { timeout: REQUEST_TIMEOUT_MS, retryOptions: { attempts: 1 } } }),
-    };
+    // attempts: 1 => the SDK never auto-retries (retries would burn free quota).
+    cachedClient = { key: apiKey, client: new GoogleGenAI({ apiKey, httpOptions: { timeout: REQUEST_TIMEOUT_MS, retryOptions: { attempts: 1 } } }) };
   }
   return cachedClient.client;
 }
@@ -82,22 +72,17 @@ export function classifyError(err: unknown): GeminiFailure {
 }
 
 function extractText(res: GenerateContentResponse): string | undefined {
-  if (res.promptFeedback?.blockReason) {
-    throw new GeminiFailure("blocked", `Prompt blocked: ${res.promptFeedback.blockReason}`);
-  }
-  const cand = res.candidates?.[0];
-  const finish = cand?.finishReason;
+  if (res.promptFeedback?.blockReason) throw new GeminiFailure("blocked", `Prompt blocked: ${res.promptFeedback.blockReason}`);
+  const finish = res.candidates?.[0]?.finishReason;
   if (finish && ["SAFETY", "PROHIBITED_CONTENT", "BLOCKLIST", "SPII", "RECITATION"].includes(String(finish))) {
     throw new GeminiFailure("blocked", `Response blocked: ${finish}`);
   }
-  if (finish === "MAX_TOKENS") {
-    throw new GeminiFailure("invalid_output", "Response truncated (MAX_TOKENS)");
-  }
+  if (finish === "MAX_TOKENS") throw new GeminiFailure("invalid_output", "Response truncated (MAX_TOKENS)");
   return res.text;
 }
 
 export async function generateWithGemini(
-  sub: PreparedSubmission,
+  fp: Footprint,
   intensity: Intensity,
   config: GeminiConfig,
   client: GenerateClient = getClient(config.apiKey),
@@ -105,7 +90,7 @@ export async function generateWithGemini(
   try {
     const res = await client.models.generateContent({
       model: config.model,
-      contents: buildUserPrompt(sub, intensity),
+      contents: buildUserPrompt(fp, intensity),
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
         responseMimeType: "application/json",
@@ -115,7 +100,7 @@ export async function generateWithGemini(
         ...(config.thinkingLevel ? { thinkingConfig: { thinkingLevel: config.thinkingLevel } } : {}),
       },
     });
-    return parseModelOutput(extractText(res), intensity);
+    return parseModelOutput(extractText(res), fp);
   } catch (err) {
     throw classifyError(err);
   }

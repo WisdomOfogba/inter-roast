@@ -1,20 +1,19 @@
-export function shareText(title: string, score: number): string {
-  return `The internet roasted me: I'm "${title}" (${score.toFixed(1)}/10 roast rating). Your turn.`;
+export function shareText(archetype: string, headline: string): string {
+  return `RepoRiot reviewed my GitHub and diagnosed me as "${archetype}". ${headline}`;
 }
 
 export function xShareUrl(text: string, url: string): string {
-  const p = new URLSearchParams({ text, url });
-  return `https://x.com/intent/tweet?${p.toString()}`;
+  return `https://x.com/intent/tweet?${new URLSearchParams({ text, url }).toString()}`;
 }
 
-export function whatsappShareUrl(text: string, url: string): string {
-  return `https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`;
+export function linkedInShareUrl(url: string): string {
+  return `https://www.linkedin.com/sharing/share-offsite/?${new URLSearchParams({ url }).toString()}`;
 }
 
 export function siteHost(url: string): string {
   try {
     return new URL(url).host.replace(/^www\./, "");
   } catch {
-    return "internetroast.app";
+    return "reporiot.app";
   }
 }

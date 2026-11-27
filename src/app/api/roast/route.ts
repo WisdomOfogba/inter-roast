@@ -1,84 +1,100 @@
 import { NextResponse } from "next/server";
-import { roastRequestSchema } from "@/lib/validation/input";
-import { prepareSubmission } from "@/lib/validation/prepare";
-import { createRoast } from "@/lib/roast-engine";
+import { z } from "zod";
+import { INTENSITIES } from "@/types/roast";
+import type { StageEvent } from "@/types/github";
+import { parseGitHubProfile } from "@/lib/github/url";
+import { readGitHubConfig, GitHubError } from "@/lib/github/client";
+import { cachedFootprint, collectFootprint, storeFootprint } from "@/lib/github/collect";
+import { createRoast } from "@/lib/roast";
+import { buildRecord } from "@/lib/roast/record";
 import { encodeRecord, getSigningSecret, newCaseId } from "@/lib/share/token";
 import { clientKey, RateLimiter } from "@/lib/rate-limit";
-import type { RoastRecord } from "@/types/roast";
 
-const MAX_BODY_BYTES = 16_000;
+/**
+ * POST { profile, intensity } → NDJSON stream:
+ *   {"type":"stage","stage":"profile","status":"start"} … one line per real step
+ *   {"type":"result","token":"…","source":"gemini"|"engine"}
+ *   {"type":"error","code":"not_found"|…,"message":"…","resetAt"?:number}
+ * Validation and rate-limit failures return a plain JSON error before streaming.
+ */
 
+const bodySchema = z.object({
+  profile: z.string().max(200),
+  intensity: z.enum(INTENSITIES).default("spicy"),
+});
+
+const perMinute = Number(process.env.ROAST_RATE_LIMIT_PER_MINUTE) || 4;
 const limiter = new RateLimiter([
-  { limit: 5, windowMs: 60_000 },
-  { limit: 30, windowMs: 24 * 60 * 60_000 },
+  { limit: perMinute, windowMs: 60_000 },
+  { limit: Math.max(25, perMinute * 6), windowMs: 24 * 60 * 60_000 },
 ]);
 
-function error(status: number, message: string, extra: Record<string, unknown> = {}, headers?: HeadersInit) {
-  return NextResponse.json({ error: message, ...extra }, { status, headers: { "Cache-Control": "no-store", ...headers } });
-}
+const jsonError = (status: number, code: string, message: string, headers?: HeadersInit) =>
+  NextResponse.json({ type: "error", code, message }, { status, headers: { "Cache-Control": "no-store", ...headers } });
 
 export async function POST(request: Request) {
-  if (!request.headers.get("content-type")?.includes("application/json")) {
-    return error(415, "Send JSON.");
+  if (!request.headers.get("content-type")?.includes("application/json")) return jsonError(415, "invalid", "Send JSON.");
+
+  let body: z.output<typeof bodySchema>;
+  try {
+    const raw = await request.text();
+    if (raw.length > 2000) return jsonError(413, "invalid", "Request too large.");
+    const parsed = bodySchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) return jsonError(400, "invalid", "Send a GitHub profile link and a heat level.");
+    body = parsed.data;
+  } catch {
+    return jsonError(400, "invalid", "Couldn't read that request.");
   }
-  const declared = Number(request.headers.get("content-length") ?? 0);
-  if (declared > MAX_BODY_BYTES) return error(413, "That's a lot of receipts. Trim it down a bit.");
+
+  const profile = parseGitHubProfile(body.profile);
+  if (!profile.ok) return jsonError(400, "invalid_url", profile.error);
 
   const secret = getSigningSecret();
   if (!secret) {
     console.error("[roast] Set ROAST_SIGNING_SECRET (or GEMINI_API_KEY) to enable roasts in production.");
-    return error(503, "Roasting is temporarily offline (server configuration). Try again later.");
+    return jsonError(503, "config", "RepoRiot isn't fully configured yet. Try again later.");
   }
 
   const rl = limiter.check(clientKey(request.headers));
-  if (!rl.ok) {
-    return error(
-      429,
-      `Easy. Even roasters need a breather. Try again in ${rl.retryAfterSec}s.`,
-      { retryAfter: rl.retryAfterSec },
-      { "Retry-After": String(rl.retryAfterSec) },
-    );
-  }
+  if (!rl.ok) return jsonError(429, "too_many", `Slow down. You can roast again in ${rl.retryAfterSec}s.`, { "Retry-After": String(rl.retryAfterSec) });
 
-  let body: unknown;
-  try {
-    const raw = await request.text();
-    if (raw.length > MAX_BODY_BYTES) return error(413, "That's a lot of receipts. Trim it down a bit.");
-    body = JSON.parse(raw);
-  } catch {
-    return error(400, "Couldn't read that request.");
-  }
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      const send = (obj: unknown) => controller.enqueue(encoder.encode(JSON.stringify(obj) + "\n"));
+      try {
+        const emit = (e: StageEvent) => send(e);
+        let fp = cachedFootprint(profile.username);
+        if (fp) {
+          const cached = fp;
+          // Data is reused from a fetch in the last 15 minutes; say so honestly.
+          (["profile", "repos", "readmes", "activity"] as const).forEach((stage) =>
+            emit({ type: "stage", stage, status: "done", detail: stage === "profile" ? `Using @${cached.profile.login}'s data fetched in the last 15 minutes` : undefined }),
+          );
+        } else {
+          fp = await collectFootprint(profile.username, readGitHubConfig(), emit);
+          storeFootprint(fp);
+        }
 
-  const parsed = roastRequestSchema.safeParse(body);
-  if (!parsed.success) {
-    const fieldErrors: Record<string, string> = {};
-    for (const issue of parsed.error.issues) {
-      const key = String(issue.path[0] ?? "form");
-      fieldErrors[key] ??= issue.message;
-    }
-    return error(400, Object.values(fieldErrors)[0] ?? "Invalid input.", { fieldErrors });
-  }
+        emit({ type: "stage", stage: "roast", status: "start" });
+        const outcome = await createRoast(fp, body.intensity);
+        const record = buildRecord(fp, outcome, body.intensity, newCaseId());
+        emit({ type: "stage", stage: "roast", status: "done", detail: outcome.source === "gemini" ? "Roast written by Gemini" : "Roast written by the rules engine" });
+        send({ type: "result", token: encodeRecord(record, secret), source: outcome.source, fallbackReason: outcome.fallbackReason ?? null });
+      } catch (err) {
+        if (err instanceof GitHubError) {
+          send({ type: "error", code: err.code, message: err.message, ...(err.resetAt ? { resetAt: err.resetAt } : {}) });
+        } else {
+          console.error("[roast] unexpected failure", err instanceof Error ? err.message : "unknown");
+          send({ type: "error", code: "internal", message: "Something broke on our side. Try again in a moment." });
+        }
+      } finally {
+        controller.close();
+      }
+    },
+  });
 
-  const { handle, bio, content, context, intensity } = parsed.data;
-  const submission = prepareSubmission({ handle, bio, content, context });
-
-  const outcome = await createRoast(submission, intensity);
-
-  const record: RoastRecord = {
-    v: 1,
-    caseId: newCaseId(),
-    handle,
-    result: outcome.result,
-    source: outcome.source,
-    ...(outcome.model ? { model: outcome.model } : {}),
-    ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
-    sparse: submission.stats.sparse,
-    createdAt: Date.now(),
-  };
-
-  // Nothing about the submission is stored or logged; only the generated roast leaves.
-  return NextResponse.json(
-    { token: encodeRecord(record, secret), source: record.source, fallbackReason: record.fallbackReason ?? null },
-    { headers: { "Cache-Control": "no-store" } },
-  );
+  return new Response(stream, {
+    headers: { "Content-Type": "application/x-ndjson; charset=utf-8", "Cache-Control": "no-store", "X-Accel-Buffering": "no" },
+  });
 }

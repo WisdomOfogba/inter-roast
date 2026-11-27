@@ -1,5 +1,5 @@
 {
-  "name": "internet-roast",
+  "name": "reporiot",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "mock:github": "node scripts/mock-github/server.mjs"
   },
   "dependencies": {
     "@google/genai": "^3.6.1",

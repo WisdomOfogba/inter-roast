@@ -2,29 +2,44 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { deflateRawSync, inflateRawSync } from "node:zlib";
 import { z } from "zod";
 import { INTENSITIES, type RoastRecord } from "@/types/roast";
-import { roastOutputSchema } from "@/lib/validation/roast-output";
 
 /**
- * Share links carry the *generated roast* (never the raw submission),
+ * Share links carry the generated roast plus the public GitHub data it cites,
  * compressed and HMAC-signed so nobody can mint fake roasts on our domain.
  * Format: base64url(deflateRaw(json)) + "." + base64url(hmac[0..16])
  */
 
-const MAX_TOKEN_LENGTH = 4000;
+const MAX_TOKEN_LENGTH = 12_000;
 
-const recordSchema = z.object({
-  v: z.literal(1),
-  caseId: z.string().regex(/^[A-Z0-9-]{4,16}$/),
-  handle: z.string().regex(/^[A-Za-z0-9_-]{3,20}$/).nullable(),
-  result: roastOutputSchema.extend({ roastIntensity: z.enum(INTENSITIES) }),
-  source: z.enum(["gemini", "engine"]),
-  model: z.string().max(60).optional(),
-  fallbackReason: z.enum(["unconfigured", "quota", "unavailable", "invalid_output", "blocked"]).optional(),
-  sparse: z.boolean(),
-  createdAt: z.number().int().positive(),
-});
+/** The HMAC already proves we wrote it; this guards shape and version. */
+const recordSchema = z
+  .object({
+    v: z.literal(2),
+    caseId: z.string().regex(/^[A-Z0-9-]{4,16}$/),
+    intensity: z.enum(INTENSITIES),
+    profile: z.object({ login: z.string().regex(/^[A-Za-z0-9-]{1,39}$/), id: z.number().int() }).passthrough(),
+    result: z.object({
+      headline: z.string(),
+      archetype: z.string(),
+      summary: z.string(),
+      mainRoast: z.string(),
+      comments: z.array(z.object({ category: z.string(), title: z.string(), roast: z.string(), evidence: z.array(z.object({ kind: z.string(), ref: z.string() })) })).min(1).max(6),
+      closingLine: z.string(),
+    }),
+    facts: z.array(z.any()),
+    repos: z.array(z.any()),
+    readmes: z.array(z.any()),
+    commits: z.array(z.any()),
+    languages: z.array(z.any()),
+    pinned: z.array(z.string()).nullable(),
+    source: z.enum(["gemini", "engine"]),
+    model: z.string().max(60).optional(),
+    fallbackReason: z.enum(["unconfigured", "quota", "unavailable", "invalid_output", "blocked"]).optional(),
+    createdAt: z.number().int().positive(),
+  })
+  .passthrough();
 
-const DEV_SECRET = "internet-roast-dev-secret-do-not-use-in-production";
+const DEV_SECRET = "reporiot-dev-secret-do-not-use-in-production";
 
 /**
  * Signing secret: ROAST_SIGNING_SECRET, else derived from GEMINI_API_KEY (so a
@@ -63,11 +78,10 @@ export function decodeRecord(token: string, secret: string | null): RoastRecord 
   const actual = Buffer.from(sig);
   if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return null;
   try {
-    const json = inflateRawSync(Buffer.from(payload, "base64url"), { maxOutputLength: 32_000 }).toString("utf8");
+    const json = inflateRawSync(Buffer.from(payload, "base64url"), { maxOutputLength: 64_000 }).toString("utf8");
     const parsed = recordSchema.safeParse(JSON.parse(json));
     if (!parsed.success) return null;
-    const r = parsed.data;
-    return { ...r, result: { ...r.result, observations: [r.result.observations[0], r.result.observations[1], r.result.observations[2]] } };
+    return parsed.data as unknown as RoastRecord;
   } catch {
     return null;
   }
@@ -77,5 +91,5 @@ export function newCaseId(): string {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   const bytes = crypto.getRandomValues(new Uint8Array(6));
   const s = Array.from(bytes, (b) => alphabet[b % alphabet.length]).join("");
-  return `IR-${s}`;
+  return `RR-${s}`;
 }

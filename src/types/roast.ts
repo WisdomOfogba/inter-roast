@@ -1,65 +1,66 @@
-export const INTENSITIES = ["playful", "brutal", "savage"] as const;
+import type { CommitSample, Fact, LanguageShare, ProfileSummary, ReadmeInsight, RepoSummary } from "./github";
+
+export const INTENSITIES = ["mild", "spicy", "scorched"] as const;
 export type Intensity = (typeof INTENSITIES)[number];
 
-export interface Indicator {
-  /** Short behaviour label, e.g. "Reply velocity". */
-  label: string;
-  /** 1–5 severity, vibes-based. */
-  level: number;
+export const CATEGORIES = ["graveyard", "readme", "languages", "presentation", "stars", "activity", "pinned", "personality"] as const;
+export type CategoryId = (typeof CATEGORIES)[number];
+
+export const CATEGORY_LABEL: Record<CategoryId, string> = {
+  graveyard: "Repository graveyard",
+  readme: "README quality",
+  languages: "Language identity crisis",
+  presentation: "Project presentation",
+  stars: "Star economy",
+  activity: "Activity patterns",
+  pinned: "Pinned choices",
+  personality: "Developer personality",
+};
+
+export type EvidenceKind = "repo" | "fact" | "commit" | "readme";
+export interface EvidenceRef {
+  kind: EvidenceKind;
+  /** Repo name (repo/readme), fact id (fact) or commit id like "c3" (commit). */
+  ref: string;
 }
 
-/** The structured roast every provider (Gemini or the local engine) must produce. */
+export interface ReviewComment {
+  category: CategoryId;
+  title: string;
+  roast: string;
+  evidence: EvidenceRef[];
+}
+
 export interface RoastResult {
-  personalityTitle: string;
-  personalityDescription: string;
-  /** Short, meme-able headline used on the "Exposed" card. */
   headline: string;
+  archetype: string;
+  summary: string;
   mainRoast: string;
-  observations: [string, string, string];
-  personalityTraits: string[];
-  /** Internet behaviour classification, e.g. "Comment-section litigator, Class II". */
-  behaviourClass: string;
-  indicators: Indicator[];
-  roastScore: number;
-  roastIntensity: Intensity;
-  closingStatement: string;
+  comments: ReviewComment[];
+  closingLine: string;
 }
 
 export type RoastSource = "gemini" | "engine";
+export type FallbackReason = "unconfigured" | "quota" | "unavailable" | "invalid_output" | "blocked";
 
-export type FallbackReason =
-  | "unconfigured"
-  | "quota"
-  | "unavailable"
-  | "invalid_output"
-  | "blocked";
-
-/** What gets signed into a share link. Never contains the raw submission. */
+/**
+ * Everything the result page needs, signed into the share link. Contains only
+ * public GitHub data that the roast references, never tokens or raw READMEs.
+ */
 export interface RoastRecord {
-  v: 1;
-  /** Short human-readable case number shown on cards. */
+  v: 2;
   caseId: string;
-  handle: string | null;
+  intensity: Intensity;
+  profile: ProfileSummary;
   result: RoastResult;
+  facts: Fact[];
+  repos: RepoSummary[];
+  readmes: ReadmeInsight[];
+  commits: CommitSample[];
+  languages: LanguageShare[];
+  pinned: string[] | null;
   source: RoastSource;
   model?: string;
   fallbackReason?: FallbackReason;
-  /** True when the submission was too thin to say much. */
-  sparse: boolean;
   createdAt: number;
-}
-
-export interface PreparedSubmission {
-  handle: string | null;
-  bio: string;
-  items: string[];
-  context: string;
-  stats: {
-    itemCount: number;
-    wordCount: number;
-    charCount: number;
-    duplicatesRemoved: number;
-    truncated: boolean;
-    sparse: boolean;
-  };
 }
